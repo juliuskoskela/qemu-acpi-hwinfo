@@ -31,15 +31,31 @@
             HWINFO_DIR="''${1:-/var/lib/acpi-hwinfo}"
             mkdir -p "$HWINFO_DIR"
             
-            # Detect NVMe serial
-            NVME_SERIAL="no-nvme-detected"
+            # Detect NVMe serial (use same logic as devshell)
+            NVME_SERIAL=""
+            # Try multiple methods to detect NVMe serial
             if command -v nvme >/dev/null 2>&1; then
-              for nvme_dev in /dev/nvme*n1; do
-                if [ -e "$nvme_dev" ]; then
-                  NVME_SERIAL=$(nvme id-ctrl "$nvme_dev" 2>/dev/null | grep '^sn' | awk '{print $3}' || echo "")
-                  [ -n "$NVME_SERIAL" ] && [ "$NVME_SERIAL" != "---------------------" ] && break
+              NVME_SERIAL=$(nvme list 2>/dev/null | awk 'NR>1 {print $2; exit}' || echo "")
+            fi
+            if [ -z "$NVME_SERIAL" ] && [ -f /sys/class/nvme/nvme0/serial ]; then
+              NVME_SERIAL=$(cat /sys/class/nvme/nvme0/serial 2>/dev/null | tr -d ' \n' || echo "")
+            fi
+            # Try alternative paths
+            if [ -z "$NVME_SERIAL" ]; then
+              for nvme_dev in /sys/class/nvme/nvme*/serial; do
+                if [ -f "$nvme_dev" ]; then
+                  NVME_SERIAL=$(cat "$nvme_dev" 2>/dev/null | tr -d ' \n' || echo "")
+                  [ -n "$NVME_SERIAL" ] && break
                 fi
               done
+            fi
+            # Try lsblk method
+            if [ -z "$NVME_SERIAL" ] && command -v lsblk >/dev/null 2>&1; then
+              NVME_SERIAL=$(lsblk -d -o NAME,SERIAL | grep nvme | awk '{print $2; exit}' || echo "")
+            fi
+            # Clean up the serial - if it's just dashes or empty, treat as not detected
+            if [ -z "$NVME_SERIAL" ] || [ "$NVME_SERIAL" = "---------------------" ] || echo "$NVME_SERIAL" | grep -q '^-*$'; then
+              NVME_SERIAL="no-nvme-detected"
             fi
             
             # Detect MAC address
@@ -126,15 +142,31 @@
             
             log "1. Generating hardware info for test..."
             
-            # Detect hardware (or use mock data for testing)
-            NVME_SERIAL="no-nvme-detected"
+            # Detect hardware (use same logic as devshell and generate-hwinfo)
+            NVME_SERIAL=""
+            # Try multiple methods to detect NVMe serial
             if command -v nvme >/dev/null 2>&1; then
-              for nvme_dev in /dev/nvme*n1; do
-                if [ -e "$nvme_dev" ]; then
-                  NVME_SERIAL=$(nvme id-ctrl "$nvme_dev" 2>/dev/null | grep '^sn' | awk '{print $3}' || echo "")
-                  [ -n "$NVME_SERIAL" ] && [ "$NVME_SERIAL" != "---------------------" ] && break
+              NVME_SERIAL=$(nvme list 2>/dev/null | awk 'NR>1 {print $2; exit}' || echo "")
+            fi
+            if [ -z "$NVME_SERIAL" ] && [ -f /sys/class/nvme/nvme0/serial ]; then
+              NVME_SERIAL=$(cat /sys/class/nvme/nvme0/serial 2>/dev/null | tr -d ' \n' || echo "")
+            fi
+            # Try alternative paths
+            if [ -z "$NVME_SERIAL" ]; then
+              for nvme_dev in /sys/class/nvme/nvme*/serial; do
+                if [ -f "$nvme_dev" ]; then
+                  NVME_SERIAL=$(cat "$nvme_dev" 2>/dev/null | tr -d ' \n' || echo "")
+                  [ -n "$NVME_SERIAL" ] && break
                 fi
               done
+            fi
+            # Try lsblk method
+            if [ -z "$NVME_SERIAL" ] && command -v lsblk >/dev/null 2>&1; then
+              NVME_SERIAL=$(lsblk -d -o NAME,SERIAL | grep nvme | awk '{print $2; exit}' || echo "")
+            fi
+            # Clean up the serial - if it's just dashes or empty, treat as not detected
+            if [ -z "$NVME_SERIAL" ] || [ "$NVME_SERIAL" = "---------------------" ] || echo "$NVME_SERIAL" | grep -q '^-*$'; then
+              NVME_SERIAL="no-nvme-detected"
             fi
             
             # Detect MAC address
@@ -185,7 +217,19 @@
             echo "Extracting hardware info from compiled table:"
             if command -v strings >/dev/null 2>&1; then
                 echo "Hardware info found:"
-                strings hwinfo.aml | grep -A1 -E "(NVME_SERIAL|MAC_ADDRESS)" | grep -v -E "(NVME_SERIAL|MAC_ADDRESS)" | head -2
+                EXTRACTED_INFO=$(strings hwinfo.aml | grep -A1 -E "(NVME_SERIAL|MAC_ADDRESS)" | grep -v -E "(NVME_SERIAL|MAC_ADDRESS)" | head -2)
+                echo "$EXTRACTED_INFO"
+                
+                # Validate that expected data is in the table
+                if ! strings hwinfo.aml | grep -q "$MAC_ADDRESS"; then
+                  error "MAC address '$MAC_ADDRESS' not found in ACPI table"
+                  exit 1
+                fi
+                if [ "$NVME_SERIAL" != "no-nvme-detected" ] && [ "$NVME_SERIAL" != "---------------------" ] && ! strings hwinfo.aml | grep -qF "$NVME_SERIAL"; then
+                  error "NVMe serial '$NVME_SERIAL' not found in ACPI table"
+                  exit 1
+                fi
+                success "ACPI table validation passed"
             else
                 warning "strings command not available for extraction test"
             fi
@@ -212,12 +256,15 @@
             log "7. Building NixOS test VM..."
             echo "Building test VM with ACPI hardware info support..."
             FLAKE_DIR="$(pwd)"
-            if (cd "$FLAKE_DIR" && nix build .#nixosConfigurations.test-vm.config.system.build.vm --no-link --quiet); then
+            if (cd "$FLAKE_DIR" && nix build .#nixosConfigurations.test-vm.config.system.build.vm --no-link --quiet 2>/dev/null); then
                 success "NixOS test VM built successfully"
                 echo "VM can be run with:"
                 echo "  cd $FLAKE_DIR && nix run .#nixosConfigurations.test-vm.config.system.build.vm -- -acpitable file=$TEST_DIR/hwinfo.aml"
+                VM_BUILD_SUCCESS=true
             else
-                warning "Failed to build NixOS test VM (this is expected in some environments)"
+                warning "Failed to build NixOS test VM"
+                echo "This may be due to missing dependencies or environment limitations"
+                VM_BUILD_SUCCESS=false
             fi
             
             echo
@@ -226,6 +273,11 @@
             success "ACPI table generation and compilation successful"
             success "ACPI table contains expected hardware information"
             success "Table is ready for MicroVM integration"
+            if [ "$VM_BUILD_SUCCESS" = "true" ]; then
+              success "NixOS test VM build successful"
+            else
+              warning "NixOS test VM build failed (may require additional setup)"
+            fi
             
             echo
             echo -e "''${BLUE}Next steps:''${NC}"
@@ -239,7 +291,11 @@
             [ -f ./test-hwinfo.aml ] && echo "• ACPI table copied to: ./test-hwinfo.aml"
             
             echo
-            echo -e "''${GREEN}✅ MicroVM test completed successfully!''${NC}"
+            if [ "$VM_BUILD_SUCCESS" = "true" ]; then
+              echo -e "''${GREEN}✅ MicroVM test completed successfully!''${NC}"
+            else
+              echo -e "''${YELLOW}⚠️  MicroVM test completed with warnings (VM build failed)''${NC}"
+            fi
           '';
 
           # MicroVM test configuration - actual working MicroVM

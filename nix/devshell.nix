@@ -12,7 +12,8 @@
         
         Quick start:
         • {green}acpi-hwinfo{reset} - Show hardware info and available commands
-        • {green}run-test-microvm{reset} - Run MicroVM with ACPI hardware info (sudo)
+        • {green}test-microvm-with-hwinfo{reset} - Complete MicroVM test (working)
+        • {green}run-test-vm-with-hwinfo{reset} - Build and run NixOS test VM with hardware info
         
         $(type -p menu &>/dev/null && menu)
       '';
@@ -67,14 +68,29 @@
             
             # Detect NVMe serial
             NVME_SERIAL=""
+            # Try multiple methods to detect NVMe serial
             if command -v nvme >/dev/null 2>&1; then
               NVME_SERIAL=$(nvme list 2>/dev/null | awk 'NR>1 {print $2; exit}' || echo "")
             fi
             if [ -z "$NVME_SERIAL" ] && [ -f /sys/class/nvme/nvme0/serial ]; then
-              NVME_SERIAL=$(cat /sys/class/nvme/nvme0/serial 2>/dev/null || echo "")
+              NVME_SERIAL=$(cat /sys/class/nvme/nvme0/serial 2>/dev/null | tr -d ' \n' || echo "")
             fi
+            # Try alternative paths
             if [ -z "$NVME_SERIAL" ]; then
-              NVME_SERIAL="not detected"
+              for nvme_dev in /sys/class/nvme/nvme*/serial; do
+                if [ -f "$nvme_dev" ]; then
+                  NVME_SERIAL=$(cat "$nvme_dev" 2>/dev/null | tr -d ' \n' || echo "")
+                  [ -n "$NVME_SERIAL" ] && break
+                fi
+              done
+            fi
+            # Try lsblk method
+            if [ -z "$NVME_SERIAL" ] && command -v lsblk >/dev/null 2>&1; then
+              NVME_SERIAL=$(lsblk -d -o NAME,SERIAL | grep nvme | awk '{print $2; exit}' || echo "")
+            fi
+            # Clean up the serial - if it's just dashes or empty, treat as not detected
+            if [ -z "$NVME_SERIAL" ] || [ "$NVME_SERIAL" = "---------------------" ] || echo "$NVME_SERIAL" | grep -q '^-*$'; then
+              NVME_SERIAL="no-nvme-detected"
             fi
             
             # Detect MAC address
@@ -91,60 +107,19 @@
             echo
             echo "🛠️  Available commands:"
             echo "   test-microvm-with-hwinfo - Complete MicroVM test (working)"
-            echo "   run-test-microvm      - Run MicroVM with ACPI hwinfo (sudo)"
+            echo "   run-test-vm-with-hwinfo  - Build and run NixOS test VM with hardware info"
+            echo "   run-test-microvm         - Run MicroVM with ACPI hwinfo (sudo)"
             echo
             echo "💡 For NixOS systems, enable the acpi-hwinfo module:"
             echo "   services.acpi-hwinfo.enable = true;"
           '';
         }
-        {
-          name = "create-test-hwinfo";
-          help = "Create test hardware info files";
-          command = ''
-            echo "🧪 Creating test hardware info..."
-            nix --extra-experimental-features "nix-command flakes" run .#create-test-hwinfo
-          '';
-        }
-        {
-          name = "qemu-with-hwinfo";
-          help = "Start QEMU with runtime hardware info";
-          command = ''
-            echo "🚀 Starting QEMU with runtime hardware info..."
-            nix --extra-experimental-features "nix-command flakes" run .#qemu-with-hwinfo -- "$@"
-          '';
-        }
-        {
-          name = "integration-test";
-          help = "Run integration tests";
-          command = ''
-            echo "🔬 Running integration tests..."
-            nix --extra-experimental-features "nix-command flakes" run .#integration-test
-          '';
-        }
-        {
-          name = "run-test-vm";
-          help = "Build and run test VM";
-          command = ''
-            echo "🚀 Building and running test VM..."
-            nix --extra-experimental-features "nix-command flakes" run .#run-test-vm
-          '';
-        }
-        {
-          name = "run-test-vm-with-hwinfo";
-          help = "Run test VM with qemu-with-hwinfo";
-          command = ''
-            echo "🚀 Running test VM with hardware info..."
-            nix --extra-experimental-features "nix-command flakes" run .#run-test-vm-with-hwinfo
-          '';
-        }
-        {
-          name = "run-automated-vm-test";
-          help = "Run automated VM test (runs test and exits)";
-          command = ''
-            echo "🔬 Running automated VM test..."
-            nix --extra-experimental-features "nix-command flakes" run .#run-automated-vm-test
-          '';
-        }
+
+
+
+
+
+
         {
           name = "test-microvm-with-hwinfo";
           help = "Complete MicroVM test (working)";
@@ -160,6 +135,42 @@
             echo "🚀 Running MicroVM with ACPI hardware info..."
             echo "⚠️  This command requires sudo privileges"
             sudo env PATH="$PATH" nix --extra-experimental-features "nix-command flakes" run .#run-test-microvm
+          '';
+        }
+
+        {
+          name = "run-test-vm-with-hwinfo";
+          help = "Build and run NixOS test VM with hardware info";
+          command = ''
+            echo "🚀 Building and running NixOS test VM with hardware info..."
+            echo "This will:"
+            echo "  1. Generate hardware info and ACPI table"
+            echo "  2. Build NixOS test VM"
+            echo "  3. Run VM with ACPI table injected"
+            echo
+            
+            # First run the microvm test to generate the ACPI table
+            echo "📋 Step 1: Generating ACPI table..."
+            nix --extra-experimental-features "nix-command flakes" run .#test-microvm-with-hwinfo
+            
+            if [ -f ./test-hwinfo.aml ]; then
+              echo
+              echo "📦 Step 2: Building NixOS test VM..."
+              if nix --extra-experimental-features "nix-command flakes" build .#nixosConfigurations.test-vm.config.system.build.vm; then
+                echo
+                echo "🚀 Step 3: Running VM with ACPI hardware info..."
+                echo "VM will boot with injected hardware info ACPI table"
+                echo "Use 'read-hwinfo' command inside VM to test hardware detection"
+                echo
+                ./result/bin/run-*-vm -acpitable file=./test-hwinfo.aml
+              else
+                echo "❌ Failed to build NixOS test VM"
+                exit 1
+              fi
+            else
+              echo "❌ Failed to generate ACPI table"
+              exit 1
+            fi
           '';
         }
       ];
