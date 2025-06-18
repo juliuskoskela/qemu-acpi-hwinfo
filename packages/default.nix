@@ -7,6 +7,43 @@
         #!/bin/bash
         set -euo pipefail
         
+        # Show help if requested
+        if [ "''${1:-}" = "--help" ] || [ "''${1:-}" = "-h" ]; then
+          cat <<EOF
+acpi-hwinfo-generate - Generate ACPI hardware info files
+
+USAGE:
+    acpi-hwinfo-generate [OPTIONS]
+
+DESCRIPTION:
+    Detects hardware information (NVMe serial, MAC address) from the current
+    system and generates ACPI SSDT table files that can be injected into QEMU VMs.
+
+OPTIONS:
+    -h, --help    Show this help message
+
+ENVIRONMENT:
+    ACPI_HWINFO_DEBUG=true    Enable debug output for hardware detection
+
+OUTPUT:
+    Creates files in /var/lib/acpi-hwinfo/ (or ./acpi-hwinfo/ if no write access):
+    - hwinfo.json    Hardware info metadata
+    - hwinfo.asl     ACPI source file
+    - hwinfo.aml     Compiled ACPI table (ready for QEMU)
+
+EXAMPLES:
+    # Generate hardware info
+    acpi-hwinfo-generate
+    
+    # Generate with debug output
+    ACPI_HWINFO_DEBUG=true acpi-hwinfo-generate
+
+SEE ALSO:
+    acpi-hwinfo-show(1), qemu-with-hwinfo(1)
+EOF
+          exit 0
+        fi
+        
         # Import shared hardware detection functions
         ${inputs.self.lib.hardwareDetectionScript pkgs}
         
@@ -240,6 +277,45 @@ EOF
       create-test-hwinfo = pkgs.writeShellScriptBin "create-test-hwinfo" ''
         #!/bin/bash
         set -euo pipefail
+        
+        # Show help if requested
+        if [ "''${1:-}" = "--help" ] || [ "''${1:-}" = "-h" ]; then
+          cat <<EOF
+create-test-hwinfo - Create test ACPI hardware info files
+
+USAGE:
+    create-test-hwinfo [NVME_SERIAL] [MAC_ADDRESS] [OUTPUT_DIR]
+
+DESCRIPTION:
+    Creates ACPI hardware info files with custom test values. Useful for
+    testing and development when you need specific hardware identifiers.
+
+ARGUMENTS:
+    NVME_SERIAL     NVMe serial number (default: test-nvme-serial)
+    MAC_ADDRESS     MAC address (default: 00:11:22:33:44:55)
+    OUTPUT_DIR      Output directory (default: ./test-hwinfo)
+
+OUTPUT:
+    Creates files in the specified directory:
+    - hwinfo.json    Hardware info metadata
+    - hwinfo.asl     ACPI source file
+    - hwinfo.aml     Compiled ACPI table (ready for QEMU)
+
+EXAMPLES:
+    # Create test files with defaults
+    create-test-hwinfo
+    
+    # Create with custom values
+    create-test-hwinfo "MY_NVME_123" "aa:bb:cc:dd:ee:ff"
+    
+    # Create in custom directory
+    create-test-hwinfo "TEST_SERIAL" "00:11:22:33:44:55" "./test-output"
+
+SEE ALSO:
+    acpi-hwinfo-generate(1), qemu-with-hwinfo(1)
+EOF
+          exit 0
+        fi
         
         # Parse arguments with validation
         NVME_SERIAL="''${1:-test-nvme-serial}"

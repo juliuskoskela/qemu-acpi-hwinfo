@@ -1,6 +1,17 @@
 # QEMU ACPI Hardware Info
 
-A tool for embedding host hardware information into QEMU virtual machines via ACPI tables, allowing guests to access host hardware identifiers like NVMe serial numbers and MAC addresses.
+A Nix-based solution for injecting hardware information into QEMU virtual machines via ACPI tables. This allows VMs to access host hardware identifiers like NVMe serial numbers and MAC addresses.
+
+## Features
+
+- 🔍 **Robust Hardware Detection**: Multi-method NVMe serial and MAC address detection with comprehensive fallbacks
+- 🏗️ **ACPI Table Generation**: Creates SSDT tables that can be injected into QEMU VMs
+- 🐧 **NixOS Integration**: Provides both host and guest NixOS modules
+- 🧪 **Comprehensive Testing**: Includes VM and MicroVM test configurations with end-to-end testing
+- 🛠️ **Rich Development Tools**: Development shell with testing commands and debug support
+- 📦 **Modular Design**: Clean, maintainable codebase with shared libraries and DRY principles
+- 🔧 **Debug Support**: Built-in debug mode for troubleshooting hardware detection
+- 📚 **Comprehensive Documentation**: All commands include `--help` documentation
 
 ## Quick Start with Nix (Recommended)
 
@@ -21,7 +32,39 @@ nix run .#acpi-hwinfo-show
 
 # Start QEMU with hardware info
 nix run .#qemu-with-hwinfo -- disk.qcow2
+
+# Test with VM (requires sudo for VM creation)
+sudo run-test-vm-with-hwinfo
+
+# Enable debug mode for hardware detection
+ACPI_HWINFO_DEBUG=true nix run .#acpi-hwinfo-generate
 ```
+
+## Hardware Detection
+
+The system uses a robust multi-method approach to detect hardware:
+
+### NVMe Serial Detection
+
+1. **nvme id-ctrl**: Most reliable method using nvme-cli to query controller directly
+2. **nvme list**: Fallback using nvme-cli list command with proper filtering
+3. **sysfs**: Reading from `/sys/class/nvme/nvme0/serial` as final fallback
+4. **Graceful fallback**: Returns "no-nvme-detected" if no NVMe found
+
+### MAC Address Detection
+
+1. **ip link**: Uses iproute2 to get the first ethernet interface MAC address
+2. **Graceful fallback**: Returns "00:00:00:00:00:00" if no interface found
+
+### Debug Mode
+
+Enable comprehensive debug output to troubleshoot hardware detection:
+
+```bash
+ACPI_HWINFO_DEBUG=true acpi-hwinfo-generate
+```
+
+This shows detailed information about each detection method attempted and which one succeeded.
 
 ## NixOS Modules
 
