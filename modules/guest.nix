@@ -35,11 +35,12 @@ in
   };
 
   config = mkIf cfg.enable (mkMerge [
-    # MicroVM integration would go here, but it's disabled for compatibility
-    # with regular NixOS systems that don't have the microvm module
-
-    # QEMU integration would go here, but virtualisation.qemu doesn't exist
-    # in standard NixOS. This would need to be configured at the VM runner level.
+    # MicroVM integration
+    (mkIf cfg.enableMicrovm {
+      microvm.qemu.extraArgs = mkIf (cfg.hostHwinfoPath != "") [
+        "-acpitable" "file=${cfg.hostHwinfoPath}"
+      ];
+    })
 
     # Common configuration
     {
