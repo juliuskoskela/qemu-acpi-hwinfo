@@ -31,12 +31,14 @@ pkgs.mkShell {
   shellHook = ''
     echo "🚀 QEMU ACPI Hardware Info Development Environment"
     echo "Available commands:"
-    echo "  run-test-vm-with-hwinfo  - Run end-to-end test with MicroVM"
-    echo "  test-build               - Test building hardware info"
-    echo "  test-guest-read          - Test guest reading functionality"
+    echo "  nix run .#test-microvm-with-hwinfo  - Run comprehensive MicroVM test"
+    echo "  nix run .#generate-hwinfo           - Generate hardware info ACPI table"
+    echo "  nix run .#read-hwinfo               - Read hardware info from ACPI"
     echo ""
     echo "Development tools available:"
-    echo "  iasl, nvme, qemu-system-x86_64, microvm"
+    echo "  iasl, nvme, qemu-system-x86_64"
     echo ""
+    echo "Quick start:"
+    echo "  nix run .#test-microvm-with-hwinfo"
   '';
 }
