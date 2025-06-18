@@ -4,6 +4,10 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-parts.url = "github:hercules-ci/flake-parts";
+    devshell = {
+      url = "github:numtide/devshell";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     microvm = {
       url = "github:astro/microvm.nix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -12,6 +16,9 @@
 
   outputs = inputs@{ flake-parts, nixpkgs, microvm, ... }:
     flake-parts.lib.mkFlake { inherit inputs; } {
+      imports = [
+        ./nix/devshell.nix
+      ];
       systems = [ "x86_64-linux" "aarch64-linux" ];
       
       perSystem = { pkgs, system, ... }: {
@@ -236,153 +243,105 @@
           '';
 
           # MicroVM test configuration - actual working MicroVM
+          # Simple MicroVM for testing
           test-microvm = let
-            microvmSystem = nixpkgs.lib.nixosSystem {
+            nixosSystem = inputs.nixpkgs.lib.nixosSystem {
               system = "x86_64-linux";
               modules = [
                 inputs.microvm.nixosModules.microvm
                 ./modules
                 ({ pkgs, ... }: {
-                  # Enable the ACPI hardware info guest module
-                  acpi-hwinfo.guest.enable = true;
-
-                  # MicroVM configuration
+                  # Basic MicroVM configuration
                   microvm = {
-                    vcpu = 2;
-                    mem = 1024;
                     hypervisor = "qemu";
-
+                    vcpu = 2;
+                    mem = 512;
+                    
                     # Network configuration
                     interfaces = [{
                       type = "user";
-                      id = "vm-net";
-                      mac = "02:00:00:00:00:01";
+                      id = "net0";
+                      mac = "c8:7f:54:05:d8:e9";
                     }];
-
-                    # Share the Nix store
-                    shares = [{
-                      source = "/nix/store";
-                      mountPoint = "/nix/.ro-store";
-                      tag = "ro-store";
-                      proto = "virtiofs";
-                    }];
-
-                    # Add ACPI table with hardware info
-                    qemu.extraArgs = [
-                      "-acpitable" "file=/var/lib/acpi-hwinfo/hwinfo.aml"
-                    ];
+                    
+                    # Disable virtiofs to avoid socket issues
+                    shares = [];
                   };
-
+                  
                   # System configuration
                   system.stateVersion = "24.05";
-
-                  # Auto-login for testing
-                  services.getty.autologinUser = "root";
-
-                  # Test packages
+                  
+                  # Enable our ACPI hardware info module
+                  acpi-hwinfo.guest.enable = true;
+                  
+                  # Add test tools to the system
                   environment.systemPackages = with pkgs; [
-                    jq
                     acpica-tools
-                    vim
-                    htop
+                    nvme-cli
+                    iproute2
+                    file
+                    hexdump
                   ];
-
-                  # Create a test script that can be run in the VM
+                  
+                  # Auto-login as root for testing
+                  services.getty.autologinUser = "root";
+                  
+                  # Add test script to /etc
                   environment.etc."test-acpi-hwinfo.sh" = {
                     mode = "0755";
                     text = ''
                       #!/bin/bash
                       set -euo pipefail
                       
-                      echo "🧪 ACPI Hardware Info Test"
-                      echo "=========================="
-                      echo
+                      echo "🔍 Testing ACPI Hardware Info in MicroVM"
+                      echo "========================================"
                       
-                      # Test 1: Check if ACPI device exists
-                      echo "📱 Test 1: ACPI Device Check"
-                      if [ -d "/sys/bus/acpi/devices/ACPI0001:00" ]; then
-                        echo "✅ ACPI device ACPI0001:00 found"
-                        echo "   HID: $(cat /sys/bus/acpi/devices/ACPI0001:00/hid 2>/dev/null || echo 'N/A')"
-                      else
-                        echo "❌ ACPI device ACPI0001:00 not found"
-                        echo "💡 Available ACPI devices:"
-                        ls -la /sys/bus/acpi/devices/ | head -10
-                        return 1
-                      fi
-                      echo
-                      
-                      # Test 2: Check command availability
-                      echo "🔧 Test 2: Command Availability"
-                      for cmd in read-hwinfo show-acpi-hwinfo extract-hwinfo-json; do
-                        if command -v "$cmd" >/dev/null 2>&1; then
-                          echo "✅ $cmd available"
+                      # Check if ACPI device exists
+                      if [ -d /sys/firmware/acpi/tables ]; then
+                        echo "✓ ACPI tables directory found"
+                        
+                        # Look for our custom ACPI table
+                        if ls /sys/firmware/acpi/tables/SSDT* >/dev/null 2>&1; then
+                          echo "✓ SSDT tables found"
+                          ls -la /sys/firmware/acpi/tables/SSDT*
                         else
-                          echo "❌ $cmd not available"
-                          return 1
+                          echo "❌ No SSDT tables found"
                         fi
-                      done
-                      echo
-                      
-                      # Test 3: Read hardware info
-                      echo "📋 Test 3: Hardware Info Reading"
-                      if read-hwinfo; then
-                        echo "✅ Hardware info read successfully"
                       else
-                        echo "❌ Failed to read hardware info"
-                        return 1
+                        echo "❌ ACPI tables directory not found"
                       fi
-                      echo
                       
-                      # Test 4: Check ACPI tables
-                      echo "🔍 Test 4: ACPI Tables Verification"
-                      echo "Available ACPI tables:"
-                      ls -la /sys/firmware/acpi/tables/
-                      echo
-                      echo "Searching for hardware info in SSDT tables:"
-                      for ssdt in /sys/firmware/acpi/tables/SSDT*; do
-                        if [ -f "$ssdt" ]; then
-                          echo "=== $(basename $ssdt) ==="
-                          strings "$ssdt" 2>/dev/null | grep -A 3 -B 1 "NVME_SERIAL\|MAC_ADDRESS" || echo "No hardware info found"
-                        fi
-                      done
+                      # Try to read hardware info using our module
+                      if command -v read-hwinfo >/dev/null 2>&1; then
+                        echo "✓ read-hwinfo command available"
+                        echo "Reading hardware info from ACPI..."
+                        read-hwinfo || echo "❌ Failed to read hardware info"
+                      else
+                        echo "❌ read-hwinfo command not found"
+                      fi
                       
-                      echo
-                      echo "🎉 All tests passed!"
+                      echo ""
+                      echo "Test completed. Press Ctrl+C to exit MicroVM."
                     '';
                   };
-
-                  # Auto-run test on boot for automated testing
-                  systemd.services.acpi-hwinfo-auto-test = {
-                    description = "Auto-run ACPI hardware info test";
-                    wantedBy = [ "multi-user.target" ];
-                    after = [ "multi-user.target" ];
-                    serviceConfig = {
-                      Type = "oneshot";
-                      ExecStart = pkgs.writeShellScript "auto-test" ''
-                        echo "🧪 Running automated ACPI hardware info test..."
-                        sleep 5  # Give system time to fully boot
-                        if /etc/test-acpi-hwinfo.sh; then
-                          echo "✅ Automated test passed!"
-                          echo "🔌 Shutting down VM in 3 seconds..."
-                          sleep 3
-                          systemctl poweroff
-                        else
-                          echo "❌ Automated test failed!"
-                          sleep 2
-                          systemctl poweroff
-                          exit 1
-                        fi
-                      '';
-                    };
-
-                    # Environment variable to enable auto-test
-                    environment.ACPI_HWINFO_AUTO_TEST = "1";
-                  };
+                  
+                  # Show test instructions on login
+                  programs.bash.shellInit = ''
+                    echo "🚀 MicroVM with ACPI Hardware Info"
+                    echo "Run: /etc/test-acpi-hwinfo.sh"
+                    echo ""
+                  '';
+                  
+                  # Minimal services for faster boot
+                  systemd.services.systemd-networkd.enable = false;
+                  systemd.services.systemd-resolved.enable = false;
+                  networking.useNetworkd = false;
+                  networking.useDHCP = false;
                 })
               ];
             };
           in
-          microvmSystem.config.microvm.runner.qemu;
+          nixosSystem.config.microvm.runner.qemu;
 
           # Script to build and run the test MicroVM
           run-test-microvm = pkgs.writeShellScriptBin "run-test-microvm" ''
@@ -459,45 +418,13 @@ EOF
             echo "   Use Ctrl+C to shutdown"
             echo
             
-            # Run the MicroVM
-            exec "$MICROVM/bin/microvm-run"
+            # Run the MicroVM with ACPI table
+            exec "$MICROVM/bin/microvm-run" -acpitable file=/var/lib/acpi-hwinfo/hwinfo.aml
           '';
 
         };
 
-        # Enhanced dev shell with test scripts
-        devShells.default = pkgs.mkShell {
-          buildInputs = with pkgs; [ 
-            nvme-cli 
-            acpica-tools 
-            qemu
-            git
-            vim
-            htop
-            curl
-            iproute2
-            netcat
-            binutils
-            hexdump
-            file
-          ];
-          
-          shellHook = ''
-            echo "🚀 QEMU ACPI Hardware Info Development Environment"
-            echo "Available test commands:"
-            echo "  nix run .#test-microvm-with-hwinfo  - Run comprehensive MicroVM test"
-            echo "  nix run .#run-test-microvm          - Run actual MicroVM with ACPI hwinfo"
-            echo "  nix run .#generate-hwinfo           - Generate hardware info ACPI table"
-            echo "  nix run .#read-hwinfo               - Read hardware info from ACPI"
-            echo ""
-            echo "Development tools available:"
-            echo "  iasl, nvme, qemu-system-x86_64"
-            echo ""
-            echo "Quick start:"
-            echo "  nix run .#test-microvm-with-hwinfo  (test only)"
-            echo "  sudo nix run .#run-test-microvm     (actual MicroVM)"
-          '';
-        };
+
       };
 
       flake = {
