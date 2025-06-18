@@ -121,12 +121,31 @@
         # Detect NVMe serial
         NVME_SERIAL=""
         if command -v nvme >/dev/null 2>&1; then
-          NVME_SERIAL=$(nvme list 2>/dev/null | awk 'NR>1 {print $2; exit}' || echo "")
+          # Try nvme id-ctrl method first (more reliable)
+          for nvme_dev in /dev/nvme*n1; do
+            if [ -e "$nvme_dev" ]; then
+              NVME_SERIAL=$(nvme id-ctrl "$nvme_dev" 2>/dev/null | grep '^sn' | awk '{print $3}' || echo "")
+              if [ -n "$NVME_SERIAL" ] && [ "$NVME_SERIAL" != "---------------------" ]; then
+                break
+              fi
+            fi
+          done
+          
+          # Fallback to nvme list if id-ctrl didn't work
+          if [ -z "$NVME_SERIAL" ] || [ "$NVME_SERIAL" = "---------------------" ]; then
+            NVME_SERIAL=$(nvme list 2>/dev/null | awk 'NR>1 && $2 != "---------------------" {print $2; exit}' || echo "")
+          fi
         fi
-        if [ -z "$NVME_SERIAL" ] && [ -f /sys/class/nvme/nvme0/serial ]; then
-          NVME_SERIAL=$(cat /sys/class/nvme/nvme0/serial 2>/dev/null || echo "")
+        
+        # Fallback to sysfs
+        if [ -z "$NVME_SERIAL" ] || [ "$NVME_SERIAL" = "---------------------" ]; then
+          if [ -f /sys/class/nvme/nvme0/serial ]; then
+            NVME_SERIAL=$(cat /sys/class/nvme/nvme0/serial 2>/dev/null || echo "")
+          fi
         fi
-        if [ -z "$NVME_SERIAL" ]; then
+        
+        # Final fallback
+        if [ -z "$NVME_SERIAL" ] || [ "$NVME_SERIAL" = "---------------------" ]; then
           NVME_SERIAL="no-nvme-detected"
         fi
         
