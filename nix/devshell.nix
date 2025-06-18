@@ -25,8 +25,8 @@
         iproute2
         util-linux
 
-        # QEMU and virtualization
-        qemu
+        # Virtualization tools
+        # (MicroVM dependencies handled by flake inputs)
 
         # Development tools
         jq
@@ -91,64 +91,54 @@
             echo "MAC Address: $MAC_ADDRESS"
             echo
             echo "🛠️  Available commands:"
-            echo "   hwinfo-status         - Show detailed hwinfo status"
-            echo "   create-test-hwinfo    - Create test hwinfo files"
-            echo "   qemu-with-hwinfo      - Start QEMU with runtime hwinfo"
-            echo "   integration-test      - Run integration tests"
-            echo "   run-test-vm           - Build and run test VM"
-            echo "   run-test-vm-with-hwinfo - Run test VM with hardware info"
-            echo "   run-automated-vm-test - Run automated VM test (auto-exit)"
+            echo "   hwinfo-status           - Show detailed hwinfo status"
+            echo "   acpi-hwinfo-generate    - Generate hardware info"
+            echo "   acpi-hwinfo-show        - Show current hardware info"
+            echo "   run-test-microvm        - Run end-to-end test with MicroVM"
+            echo "   run-test-vm-with-hwinfo - Alias for run-test-microvm"
             echo
             echo "💡 For NixOS systems, enable the acpi-hwinfo module:"
             echo "   services.acpi-hwinfo.enable = true;"
           '';
         }
         {
-          name = "create-test-hwinfo";
-          help = "Create test hardware info files";
+          name = "acpi-hwinfo-generate";
+          help = "Generate hardware info";
           command = ''
-            echo "🧪 Creating test hardware info..."
-            nix --extra-experimental-features "nix-command flakes" run .#create-test-hwinfo
+            echo "🧪 Generating hardware info..."
+            nix --extra-experimental-features "nix-command flakes" run .#acpi-hwinfo-generate
           '';
         }
         {
-          name = "qemu-with-hwinfo";
-          help = "Start QEMU with runtime hardware info";
+          name = "acpi-hwinfo-show";
+          help = "Show current hardware info";
           command = ''
-            echo "🚀 Starting QEMU with runtime hardware info..."
-            nix --extra-experimental-features "nix-command flakes" run .#qemu-with-hwinfo -- "$@"
+            echo "📊 Showing hardware info..."
+            nix --extra-experimental-features "nix-command flakes" run .#acpi-hwinfo-show
           '';
         }
         {
-          name = "integration-test";
-          help = "Run integration tests";
+          name = "hwinfo-status";
+          help = "Show detailed hwinfo status";
           command = ''
-            echo "🔬 Running integration tests..."
-            nix --extra-experimental-features "nix-command flakes" run .#integration-test
+            echo "🔍 Checking hwinfo status..."
+            nix --extra-experimental-features "nix-command flakes" run .#hwinfo-status
           '';
         }
         {
-          name = "run-test-vm";
-          help = "Build and run test VM";
+          name = "run-test-microvm";
+          help = "Run end-to-end test with MicroVM";
           command = ''
-            echo "🚀 Building and running test VM..."
-            nix --extra-experimental-features "nix-command flakes" run .#run-test-vm
+            echo "🚀 Running end-to-end test with MicroVM..."
+            nix --extra-experimental-features "nix-command flakes" run .#run-test-microvm
           '';
         }
         {
           name = "run-test-vm-with-hwinfo";
-          help = "Run test VM with qemu-with-hwinfo";
+          help = "Alias for run-test-microvm";
           command = ''
-            echo "🚀 Running test VM with hardware info..."
+            echo "🚀 Running end-to-end test with MicroVM..."
             nix --extra-experimental-features "nix-command flakes" run .#run-test-vm-with-hwinfo
-          '';
-        }
-        {
-          name = "run-automated-vm-test";
-          help = "Run automated VM test (runs test and exits)";
-          command = ''
-            echo "🔬 Running automated VM test..."
-            nix --extra-experimental-features "nix-command flakes" run .#run-automated-vm-test
           '';
         }
       ];

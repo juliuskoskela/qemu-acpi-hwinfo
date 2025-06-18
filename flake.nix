@@ -32,12 +32,32 @@
       imports = [
         ./packages/default.nix
         ./modules/default.nix
-        ./tests/default.nix
-        ./tests/vm-image.nix
-        ./tests/microvm.nix
         ./nix/devshell.nix
         ./nix/formatter.nix
         ./nix/lib.nix
+        ./tests/default.nix
       ];
+
+      perSystem = { config, self', inputs', pkgs, system, ... }: {
+        apps = {
+          # MicroVM runner app
+          microvm-run = {
+            type = "app";
+            program = let
+              example = import ./examples/microvm.nix { 
+                self = inputs.self; 
+                inherit (inputs) nixpkgs microvm; 
+              };
+              nixosSystem = inputs.nixpkgs.lib.nixosSystem {
+                inherit system;
+                modules = [
+                  example
+                ];
+              };
+              runner = nixosSystem.config.microvm.declaredRunner;
+            in "${runner}/bin/microvm-run";
+          };
+        };
+      };
     };
 }

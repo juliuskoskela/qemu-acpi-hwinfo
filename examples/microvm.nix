@@ -16,6 +16,20 @@ in
     enable = true;
     enableMicrovm = true;
     hostHwinfoPath = "/var/lib/acpi-hwinfo/hwinfo.aml";
+
+    # MicroVM-specific flags for ACPI table injection
+    microvmFlags = [
+      "--acpi-table"
+      "/var/lib/acpi-hwinfo/hwinfo.aml"
+    ];
+
+    # Additional virtiofs shares for hardware info
+    microvmShares = [{
+      source = "/var/lib/acpi-hwinfo";
+      mountPoint = "/var/lib/acpi-hwinfo";
+      tag = "hwinfo";
+      proto = "virtiofs";
+    }];
   };
 
   # MicroVM configuration
