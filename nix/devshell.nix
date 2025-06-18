@@ -70,7 +70,7 @@
             NVME_SERIAL=""
             # Try multiple methods to detect NVMe serial
             if command -v nvme >/dev/null 2>&1; then
-              NVME_SERIAL=$(nvme list 2>/dev/null | awk 'NR>1 {print $2; exit}' || echo "")
+              NVME_SERIAL=$(nvme list 2>/dev/null | awk 'NR>1 && !/^-+/ {print $2; exit}' || echo "")
             fi
             if [ -z "$NVME_SERIAL" ] && [ -f /sys/class/nvme/nvme0/serial ]; then
               NVME_SERIAL=$(cat /sys/class/nvme/nvme0/serial 2>/dev/null | tr -d ' \n' || echo "")
