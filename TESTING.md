@@ -18,13 +18,16 @@ End-to-end test that validates:
 - Hardware info generation
 - Module syntax validation
 - Hardware info file verification
-- Integration with MicroVM functionality
+- MicroVM configuration validation
+- Test ACPI table generation
+- Complete integration workflow
 
-### `run-test-microvm`
-MicroVM-specific test that validates:
-- MicroVM configuration syntax
-- Guest module structure
-- MicroVM integration options (microvmFlags, microvmShares)
+### `test-microvm` (via `nix build .#test-microvm`)
+MicroVM validation script that:
+- Shows generated test ACPI table
+- Validates MicroVM configuration
+- Provides manual build instructions
+- Demonstrates complete workflow
 
 ## Test Structure
 
@@ -40,28 +43,77 @@ MicroVM-specific test that validates:
 - Checks MicroVM-specific options
 
 ### 3. MicroVM Configuration
-- Validates `./examples/microvm.nix` syntax
-- Tests integration with microvm.nix flake input
-- Verifies MicroVM-specific features:
-  - ACPI table injection via `microvmFlags`
-  - Hardware info sharing via `microvmShares`
-  - Helper scripts and environment variables
+- Generates test ACPI table with hardware info
+- Creates nixosSystem with MicroVM modules
+- Validates ACPI table injection configuration
+- Tests guest module integration
+- Verifies guest tools availability
 
 ## Manual Testing
 
-To manually build and test a MicroVM:
+### Build Test Components
 
 ```bash
-# Build the MicroVM
-nix build --impure --expr 'let flake = builtins.getFlake (toString ./.); in (flake.inputs.nixpkgs.lib.nixosSystem { system = "x86_64-linux"; modules = [ (import ./examples/microvm.nix { inherit (flake) self; inherit (flake.inputs) nixpkgs microvm; }) flake.inputs.microvm.nixosModules.microvm ]; }).config.system.build.toplevel'
+# Build the test ACPI table
+nix build .#test-hwinfo-aml
 
-# Run the MicroVM (if built successfully)
-# ./result/bin/microvm-run
+# Verify it's a valid ACPI table
+file result
+```
+
+### Build and Run Test MicroVM
+
+```bash
+# Build a complete MicroVM system with ACPI injection
+nix build --impure --expr '
+  let
+    flake = builtins.getFlake (toString ./.);
+    hwinfo = flake.outputs.packages.x86_64-linux.test-hwinfo-aml;
+  in
+  flake.inputs.nixpkgs.lib.nixosSystem {
+    system = "x86_64-linux";
+    modules = [
+      flake.inputs.microvm.nixosModules.microvm
+      flake.nixosModules.acpi-hwinfo-guest
+      {
+        microvm = {
+          vcpu = 2; mem = 1024; hypervisor = "qemu";
+          interfaces = [{ type = "user"; id = "vm-net"; mac = "02:00:00:00:00:01"; }];
+          shares = [{ source = "/nix/store"; mountPoint = "/nix/.ro-store"; tag = "ro-store"; proto = "virtiofs"; }];
+          qemu.extraArgs = [ "-acpitable" "file=${hwinfo}" ];
+        };
+        system.stateVersion = "24.05";
+        networking.hostName = "acpi-hwinfo-test";
+        services.getty.autologinUser = "root";
+        virtualisation.acpi-hwinfo = { enable = true; enableMicrovm = true; guestTools = true; };
+      }
+    ];
+  }
+'
+
+# Access the MicroVM runner (if available)
+./result/config/microvm/declaredRunner/bin/microvm-run
+```
+
+### Test Inside MicroVM
+
+Once the MicroVM is running, test the guest tools:
+
+```bash
+# Test reading hardware info
+read-hwinfo
+
+# Display formatted hardware info
+show-acpi-hwinfo
+
+# Run the comprehensive test script
+/etc/test-acpi-hwinfo.sh
 ```
 
 ## Test Files
 
-- `./examples/microvm.nix` - Example MicroVM configuration with ACPI hardware info
+- `./tests/default.nix` - Test MicroVM configuration and validation scripts
+- `./examples/microvm-with-hwinfo.nix` - Example MicroVM configuration with ACPI hardware info
 - `./modules/guest.nix` - Guest module with MicroVM options
 - `./packages/default.nix` - Test runner implementations
 
@@ -71,8 +123,10 @@ Successful tests should show:
 - ✅ Hardware info generated successfully
 - ✅ Module syntax test passed
 - ✅ Hardware info JSON/AML found
-- ✅ MicroVM configuration is valid
-- ✅ Guest module MicroVM options work correctly
+- ✅ Generated ACPI table: /nix/store/...-test-hwinfo.aml
+- ✅ MicroVM configuration validated
+- ✅ Guest module integration verified
+- ✅ End-to-end test validation completed successfully!
 
 ## Troubleshooting
 
@@ -91,5 +145,6 @@ MicroVM building requires:
 - `microvm.nix` flake input (automatically handled)
 - Valid NixOS configuration
 - Proper module imports
+- Use `--impure` flag when using `builtins.getFlake`
 
-The tests validate configuration syntax without actually building/running VMs to keep testing fast and reliable.
+The tests validate configuration syntax and generate all necessary components. Manual MicroVM execution is optional and provided for complete integration testing.
