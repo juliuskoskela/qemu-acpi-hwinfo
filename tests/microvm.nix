@@ -8,7 +8,7 @@
           inherit system;
           modules = [
             inputs.microvm.nixosModules.microvm
-            self'.nixosModules.acpi-hwinfo-guest
+            inputs.self.nixosModules.acpi-hwinfo-guest
             {
               # Enable ACPI hardware info for MicroVM
               virtualisation.acpi-hwinfo = {
@@ -21,7 +21,7 @@
               # MicroVM configuration
               microvm = {
                 vcpu = 2;
-                mem = 2048;
+                mem = 1024;
                 hypervisor = "qemu";
 
                 # Network configuration
@@ -61,6 +61,7 @@
 
               # Create a test script that can be run in the VM
               environment.etc."test-acpi-hwinfo.sh" = {
+                mode = "0755";
                 text = ''
                   #!/bin/bash
                   set -euo pipefail
@@ -120,7 +121,6 @@
                   echo
                   echo "🎉 All tests passed!"
                 '';
-                executable = true;
               };
 
               # Auto-run test on boot for automated testing
@@ -154,7 +154,7 @@
           ];
         };
       in
-      microvmSystem.config.microvm.runner;
+      microvmSystem.config.microvm.runner.qemu;
 
       # Script to build and run the test MicroVM
       run-test-microvm = pkgs.writeShellScriptBin "run-test-microvm" ''
