@@ -35,10 +35,7 @@ in
   };
 
   config = mkIf cfg.enable (mkMerge [
-    # MicroVM integration is handled in the microvm test configuration
-    # to avoid dependency issues with regular NixOS systems
-
-    # Common configuration
+    # Common configuration for all VM types
     {
 
       # Guest tools for reading hardware info
@@ -175,5 +172,64 @@ in
         usbutils
       ]));
     }
+
+    # MicroVM-specific configuration
+    (mkIf cfg.enableMicrovm {
+      # Ensure hardware info directory is available
+      systemd.tmpfiles.rules = [
+        "d /var/lib/acpi-hwinfo 0755 root root -"
+      ];
+
+      # MicroVM service to validate ACPI hardware info
+      systemd.services.microvm-acpi-hwinfo = {
+        description = "MicroVM ACPI Hardware Info Validation";
+        wantedBy = [ "multi-user.target" ];
+        after = [ "local-fs.target" ];
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+          ExecStart = pkgs.writeScript "validate-microvm-acpi" ''
+            #!/bin/bash
+            set -euo pipefail
+            
+            echo "🔍 Validating MicroVM ACPI hardware info..."
+            
+            # Check if hardware info is available via virtiofs share
+            if [ -f "/var/lib/acpi-hwinfo/hwinfo.json" ]; then
+              echo "✅ Hardware info JSON available via virtiofs"
+              ${pkgs.jq}/bin/jq . /var/lib/acpi-hwinfo/hwinfo.json
+            else
+              echo "⚠️  Hardware info JSON not found via virtiofs"
+            fi
+            
+            # Check if ACPI table was injected
+            if [ -d "/sys/firmware/acpi/tables" ]; then
+              echo "🔍 Checking for injected ACPI tables..."
+              if ls /sys/firmware/acpi/tables/SSDT* >/dev/null 2>&1; then
+                echo "✅ SSDT tables found"
+                for ssdt in /sys/firmware/acpi/tables/SSDT*; do
+                  if ${pkgs.binutils}/bin/strings "$ssdt" 2>/dev/null | grep -q "NVME_SERIAL\|MAC_ADDRESS"; then
+                    echo "✅ Hardware info found in ACPI table: $(basename "$ssdt")"
+                    break
+                  fi
+                done
+              else
+                echo "⚠️  No SSDT tables found"
+              fi
+            else
+              echo "⚠️  ACPI tables directory not available"
+            fi
+            
+            echo "✅ MicroVM ACPI hardware info validation completed"
+          '';
+        };
+      };
+    })
+
+    # QEMU-specific configuration
+    (mkIf cfg.enableQemuIntegration {
+      # QEMU-specific ACPI handling can be added here
+      # Currently handled by the QEMU launch scripts
+    })
   ]);
 }

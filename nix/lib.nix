@@ -95,23 +95,95 @@
         };
 
       # Function to create a MicroVM with hardware info
-      mkMicroVMWithHwInfo = { system, config ? {}, nvmeSerial ? null, macAddress ? null }:
+      mkMicroVMWithHwInfo = { system, config ? { }, nvmeSerial ? "test-nvme-serial", macAddress ? "02:00:00:00:00:01" }:
         let
           pkgs = inputs.nixpkgs.legacyPackages.${system};
+
+          # Generate hardware info files
+          hwInfoJson = pkgs.writeText "hwinfo.json" (builtins.toJSON {
+            nvme_serial = nvmeSerial;
+            mac_address = macAddress;
+            generated = "build-time";
+          });
+
+          # Generate ACPI table with simple template
+          hwInfoAml = pkgs.runCommand "hwinfo.aml"
+            {
+              buildInputs = [ pkgs.acpica-tools ];
+            } ''
+            # Create ASL file with hardware info
+            cat > hwinfo.asl << 'EOF'
+            DefinitionBlock ("hwinfo.aml", "SSDT", 2, "NIXOS", "HWINFO", 0x00000001)
+            {
+                Scope (\_SB)
+                {
+                    Device (HWIF)
+                    {
+                        Name (_HID, "ACPI0001")
+                        Name (_UID, 0x01)
+                        Name (NVME, "${nvmeSerial}")
+                        Name (MACA, "${macAddress}")
+                        Name (INFO, Package (0x04)
+                        {
+                            "NVME_SERIAL",
+                            "${nvmeSerial}",
+                            "MAC_ADDRESS", 
+                            "${macAddress}"
+                        })
+                    }
+                }
+            }
+            EOF
+            
+            # Compile to AML
+            iasl -tc hwinfo.asl
+            cp hwinfo.aml $out
+          '';
         in
         inputs.microvm.lib.buildMicrovm {
           inherit pkgs;
           config = {
             imports = [
               inputs.self.nixosModules.acpi-hwinfo
+              inputs.self.nixosModules.guest
               config
             ];
-            
-            # Enable ACPI hardware info service
+
+            # Enable ACPI hardware info services
             services.acpi-hwinfo = {
               enable = true;
               nvmeSerial = nvmeSerial;
               macAddress = macAddress;
+            };
+
+            # Enable guest module with MicroVM support
+            virtualisation.acpi-hwinfo = {
+              enable = true;
+              enableMicrovm = true;
+              guestTools = true;
+            };
+
+            # MicroVM configuration with ACPI table injection
+            microvm = {
+              # Share hardware info files
+              shares = [
+                {
+                  source = pkgs.runCommand "acpi-hwinfo-dir" { } ''
+                    mkdir -p $out
+                    cp ${hwInfoJson} $out/hwinfo.json
+                    cp ${hwInfoAml} $out/hwinfo.aml
+                  '';
+                  mountPoint = "/var/lib/acpi-hwinfo";
+                  tag = "acpi-hwinfo";
+                  proto = "virtiofs";
+                }
+              ];
+
+              # Inject ACPI table
+              qemu.extraArgs = [
+                "-acpitable"
+                "file=${hwInfoAml}"
+              ];
             };
           };
         };

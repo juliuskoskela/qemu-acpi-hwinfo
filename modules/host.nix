@@ -72,48 +72,48 @@ in
         User = cfg.user;
         Group = cfg.group;
         ExecStart = pkgs.writeShellScript "acpi-hwinfo-generate" ''
-          set -euo pipefail
+                    set -euo pipefail
           
-          echo "Detecting hardware information..."
+                    echo "Detecting hardware information..."
           
-          # Import shared hardware detection functions
-          ${inputs.self.lib.hardwareDetectionScript pkgs}
+                    # Import shared hardware detection functions
+                    ${inputs.self.lib.hardwareDetectionScript pkgs}
           
-          # Detect NVMe serial
-          NVME_SERIAL="${cfg.nvmeSerial or ""}"
-          if [ -z "$NVME_SERIAL" ]; then
-            NVME_SERIAL=$(detect_nvme_serial)
-          fi
+                    # Detect NVMe serial
+                    NVME_SERIAL="${cfg.nvmeSerial or ""}"
+                    if [ -z "$NVME_SERIAL" ]; then
+                      NVME_SERIAL=$(detect_nvme_serial)
+                    fi
           
-          # Detect MAC address
-          MAC_ADDRESS="${cfg.macAddress or ""}"
-          if [ -z "$MAC_ADDRESS" ]; then
-            MAC_ADDRESS=$(detect_mac_address)
-          fi
+                    # Detect MAC address
+                    MAC_ADDRESS="${cfg.macAddress or ""}"
+                    if [ -z "$MAC_ADDRESS" ]; then
+                      MAC_ADDRESS=$(detect_mac_address)
+                    fi
           
-          echo "Detected hardware:"
-          echo "  NVMe Serial: $NVME_SERIAL"
-          echo "  MAC Address: $MAC_ADDRESS"
+                    echo "Detected hardware:"
+                    echo "  NVMe Serial: $NVME_SERIAL"
+                    echo "  MAC Address: $MAC_ADDRESS"
           
-          # Generate JSON file
-          cat > "${cfg.dataDir}/hwinfo.json" <<EOF
-          {
-            "nvme_serial": "$NVME_SERIAL",
-            "mac_address": "$MAC_ADDRESS",
-            "generated": "$(date -Iseconds)"
-          }
-          EOF
+                    # Generate JSON file
+                    cat > "${cfg.dataDir}/hwinfo.json" <<EOF
+                    {
+                      "nvme_serial": "$NVME_SERIAL",
+                      "mac_address": "$MAC_ADDRESS",
+                      "generated": "$(date -Iseconds)"
+                    }
+                    EOF
           
-          # Generate ASL file using shared template
-          cat > "${cfg.dataDir}/hwinfo.asl" <<EOF
-${inputs.self.lib.generateAcpiTemplate { nvmeSerial = "$NVME_SERIAL"; macAddress = "$MAC_ADDRESS"; }}
-          EOF
+                    # Generate ASL file using shared template
+                    cat > "${cfg.dataDir}/hwinfo.asl" <<EOF
+          ${inputs.self.lib.generateAcpiTemplate { nvmeSerial = "$NVME_SERIAL"; macAddress = "$MAC_ADDRESS"; }}
+                    EOF
           
-          # Compile ASL to AML
-          cd "${cfg.dataDir}"
-          ${pkgs.acpica-tools}/bin/iasl hwinfo.asl
+                    # Compile ASL to AML
+                    cd "${cfg.dataDir}"
+                    ${pkgs.acpica-tools}/bin/iasl hwinfo.asl
           
-          echo "Hardware info generated successfully in ${cfg.dataDir}"
+                    echo "Hardware info generated successfully in ${cfg.dataDir}"
         '';
 
         # Allow access to hardware detection tools
