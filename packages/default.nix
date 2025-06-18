@@ -297,7 +297,7 @@
               environment.etc.\"test-acpi-hwinfo.sh\".source = pkgs.writeScript \"test-acpi-hwinfo.sh\" ''
                 #!/bin/bash
                 set -e
-                echo Testing ACPI hardware info inside VM...
+                echo Testing ACPI hardware info inside VM
 
                 if command -v show-acpi-hwinfo >/dev/null 2>&1; then
                   echo show-acpi-hwinfo command available
@@ -328,7 +328,7 @@
                   echo Hardware info not available
                 fi
 
-                echo All VM tests completed successfully!
+                echo All VM tests completed successfully
               '';
 
               environment.systemPackages = with pkgs; [
