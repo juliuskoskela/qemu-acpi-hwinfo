@@ -42,20 +42,15 @@
       '';
     };
 
-    # Test MicroVM as a flake output - simple script approach
-    packages.test-microvm = pkgs.writeShellScriptBin "test-microvm" ''
-      set -euo pipefail
-      
-      echo "🚀 Building and running test MicroVM with ACPI hardware info..."
-      
-      # Generate test hardware info AML file
-      HWINFO_AML=$(nix build --no-link --print-out-paths --expr '
-        let pkgs = import <nixpkgs> {}; in
-        pkgs.runCommand "test-hwinfo.aml" {
+    # Test MicroVM as a flake output
+    packages.test-microvm = 
+      let
+        # Generate test hardware info AML file
+        hwInfoAml = pkgs.runCommand "test-hwinfo.aml" {
           buildInputs = [ pkgs.acpica-tools ];
-        } '"'"'
+        } ''
           # Create ASL file with test hardware info
-          cat > hwinfo.asl << "EOF"
+          cat > hwinfo.asl << 'EOF'
           DefinitionBlock ("hwinfo.aml", "SSDT", 2, "NIXOS", "HWINFO", 0x00000001)
           {
               Scope (\_SB)
@@ -81,66 +76,103 @@
           # Compile to AML
           iasl -tc hwinfo.asl
           cp hwinfo.aml $out
-        '"'"'
-      ')
-      
-      echo "Generated ACPI table: $HWINFO_AML"
-      
-      # Build the MicroVM system
-      echo "Building MicroVM system..."
-      MICROVM_SYSTEM=$(nix build --no-link --print-out-paths --expr "
-        let
-          flake = builtins.getFlake (toString ./.);
-          system = \"x86_64-linux\";
-        in
-        flake.inputs.nixpkgs.lib.nixosSystem {
+        '';
+
+        # Create nixosSystem with MicroVM
+        nixosSystem = inputs.nixpkgs.lib.nixosSystem {
           inherit system;
           modules = [
-            flake.inputs.microvm.nixosModules.microvm
-            flake.nixosModules.acpi-hwinfo-guest
+            inputs.microvm.nixosModules.microvm
+            inputs.self.nixosModules.acpi-hwinfo-guest
             {
+              # MicroVM configuration
               microvm = {
                 vcpu = 2;
                 mem = 1024;
-                hypervisor = \"qemu\";
+                hypervisor = "qemu";
+
+                # Network configuration
                 interfaces = [{
-                  type = \"user\";
-                  id = \"vm-net\";
-                  mac = \"02:00:00:00:00:01\";
+                  type = "user";
+                  id = "vm-net";
+                  mac = "02:00:00:00:00:01";
                 }];
+
+                # Share the Nix store
                 shares = [{
-                  source = \"/nix/store\";
-                  mountPoint = \"/nix/.ro-store\";
-                  tag = \"ro-store\";
-                  proto = \"virtiofs\";
+                  source = "/nix/store";
+                  mountPoint = "/nix/.ro-store";
+                  tag = "ro-store";
+                  proto = "virtiofs";
                 }];
+
+                # Inject ACPI table with hardware info
                 qemu.extraArgs = [
-                  \"-acpitable\"
-                  \"file=\$HWINFO_AML\"
+                  "-acpitable"
+                  "file=${hwInfoAml}"
                 ];
               };
-              system.stateVersion = \"24.05\";
-              networking.hostName = \"acpi-hwinfo-test\";
-              services.getty.autologinUser = \"root\";
+
+              # System configuration
+              system.stateVersion = "24.05";
+              networking.hostName = "acpi-hwinfo-test";
+              services.getty.autologinUser = "root";
+
+              # Enable ACPI hardware info guest support
               virtualisation.acpi-hwinfo = {
                 enable = true;
                 enableMicrovm = true;
                 guestTools = true;
               };
-              environment.systemPackages = with flake.inputs.nixpkgs.legacyPackages.\$system; [
-                jq acpica-tools vim htop
+
+              # Test packages
+              environment.systemPackages = with pkgs; [
+                jq
+                acpica-tools
+                vim
+                htop
               ];
+
+              # Create test script
+              environment.etc."test-acpi-hwinfo.sh" = {
+                text = ''
+                  #!/bin/bash
+                  set -euo pipefail
+                  
+                  echo "🧪 Testing ACPI hardware info in MicroVM..."
+                  echo "=========================================="
+                  
+                  # Test guest tools
+                  echo "📖 Testing read-hwinfo command:"
+                  if command -v read-hwinfo >/dev/null 2>&1; then
+                    read-hwinfo || echo "⚠️  read-hwinfo failed"
+                  else
+                    echo "❌ read-hwinfo command not found"
+                  fi
+                  
+                  echo "📊 Testing show-acpi-hwinfo command:"
+                  if command -v show-acpi-hwinfo >/dev/null 2>&1; then
+                    show-acpi-hwinfo
+                  else
+                    echo "❌ show-acpi-hwinfo command not found"
+                  fi
+                  
+                  echo "✅ MicroVM ACPI hardware info test completed"
+                '';
+                mode = "0755";
+              };
             }
           ];
-        }
-      ")
-      
-      echo "Built MicroVM system: $MICROVM_SYSTEM"
-      echo "To run the MicroVM manually:"
-      echo "  $MICROVM_SYSTEM/config/microvm/declaredRunner/bin/microvm-run"
-      echo
-      echo "Starting MicroVM..."
-      exec "$MICROVM_SYSTEM/config/microvm/declaredRunner/bin/microvm-run"
-    '';
+        };
+      in
+      pkgs.writeShellScriptBin "test-microvm" ''
+        echo "🚀 Starting test MicroVM with ACPI hardware info..."
+        echo "   Generated ACPI table: ${hwInfoAml}"
+        echo "   To run the test script inside VM: /etc/test-acpi-hwinfo.sh"
+        echo "   To test guest tools: read-hwinfo, show-acpi-hwinfo"
+        echo "   To exit: Press Ctrl+C"
+        echo
+        exec ${nixosSystem.config.microvm.declaredRunner}/bin/microvm-run
+      '';
   };
 }
