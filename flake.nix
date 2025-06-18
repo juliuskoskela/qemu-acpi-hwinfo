@@ -32,6 +32,8 @@
       imports = [
         ./packages/default.nix
         ./modules/default.nix
+        ./tests/default.nix
+        ./tests/vm-image.nix
         ./nix/devshell.nix
         ./nix/formatter.nix
         ./nix/lib.nix

@@ -94,6 +94,9 @@
             echo "   hwinfo-status         - Show detailed hwinfo status"
             echo "   create-test-hwinfo    - Create test hwinfo files"
             echo "   qemu-with-hwinfo      - Start QEMU with runtime hwinfo"
+            echo "   integration-test      - Run integration tests"
+            echo "   run-test-vm           - Build and run test VM"
+            echo "   run-test-vm-with-hwinfo - Run test VM with hardware info"
             echo
             echo "💡 For NixOS systems, enable the acpi-hwinfo module:"
             echo "   services.acpi-hwinfo.enable = true;"
@@ -113,6 +116,30 @@
           command = ''
             echo "🚀 Starting QEMU with runtime hardware info..."
             nix --extra-experimental-features "nix-command flakes" run .#qemu-with-hwinfo -- "$@"
+          '';
+        }
+        {
+          name = "integration-test";
+          help = "Run integration tests";
+          command = ''
+            echo "🔬 Running integration tests..."
+            nix --extra-experimental-features "nix-command flakes" run .#integration-test
+          '';
+        }
+        {
+          name = "run-test-vm";
+          help = "Build and run test VM";
+          command = ''
+            echo "🚀 Building and running test VM..."
+            nix --extra-experimental-features "nix-command flakes" run .#run-test-vm
+          '';
+        }
+        {
+          name = "run-test-vm-with-hwinfo";
+          help = "Run test VM with qemu-with-hwinfo";
+          command = ''
+            echo "🚀 Running test VM with hardware info..."
+            nix --extra-experimental-features "nix-command flakes" run .#run-test-vm-with-hwinfo
           '';
         }
       ];
