@@ -66,11 +66,23 @@
             echo "💻 Current machine hardware detection:"
             echo
             
-            # Detect NVMe serial
+            # Detect NVMe serial with multiple fallback methods
             NVME_SERIAL=""
-            # Try multiple methods to detect NVMe serial
             if command -v nvme >/dev/null 2>&1; then
-              NVME_SERIAL=$(nvme list 2>/dev/null | awk 'NR>1 && !/^-+/ {print $2; exit}' || echo "")
+              # Method 1: nvme id-ctrl (most reliable)
+              for nvme_dev in /dev/nvme*n1; do
+                if [ -e "$nvme_dev" ]; then
+                  NVME_SERIAL=$(nvme id-ctrl "$nvme_dev" 2>/dev/null | grep '^sn' | awk '{print $3}' || echo "")
+                  if [ -n "$NVME_SERIAL" ] && [ "$NVME_SERIAL" != "---------------------" ]; then
+                    break
+                  fi
+                fi
+              done
+              
+              # Method 2: nvme list fallback
+              if [ -z "$NVME_SERIAL" ] || [ "$NVME_SERIAL" = "---------------------" ]; then
+                NVME_SERIAL=$(nvme list 2>/dev/null | awk 'NR>1 && $2 != "---------------------" {print $2; exit}' || echo "")
+              fi
             fi
             if [ -z "$NVME_SERIAL" ] && [ -f /sys/class/nvme/nvme0/serial ]; then
               NVME_SERIAL=$(cat /sys/class/nvme/nvme0/serial 2>/dev/null | tr -d ' \n' || echo "")
