@@ -23,7 +23,7 @@ in
 
     microvmFlags = mkOption {
       type = types.listOf types.str;
-      default = [];
+      default = [ ];
       description = "Additional flags to pass to MicroVM for hardware info integration";
       example = [ "--acpi-table" "/var/lib/acpi-hwinfo/hwinfo.aml" ];
     };
@@ -50,7 +50,7 @@ in
           };
         };
       });
-      default = [];
+      default = [ ];
       description = "Additional virtiofs shares for hardware info";
       example = [{
         source = "/var/lib/acpi-hwinfo";
@@ -222,10 +222,10 @@ in
       # Configure MicroVM shares for hardware info
       microvm.shares = mkMerge [
         # User-specified shares
-        (mkIf (cfg.microvmShares != []) cfg.microvmShares)
-        
+        (mkIf (cfg.microvmShares != [ ]) cfg.microvmShares)
+
         # Default hardware info share if not already configured
-        (mkIf (cfg.microvmShares == [] && config ? microvm) [{
+        (mkIf (cfg.microvmShares == [ ] && config ? microvm) [{
           source = "/var/lib/acpi-hwinfo";
           mountPoint = "/var/lib/acpi-hwinfo";
           tag = "hwinfo";
@@ -234,7 +234,7 @@ in
       ];
 
       # Environment variable for MicroVM flags
-      environment.variables.MICROVM_ACPI_FLAGS = mkIf (cfg.microvmFlags != []) 
+      environment.variables.MICROVM_ACPI_FLAGS = mkIf (cfg.microvmFlags != [ ])
         (lib.concatStringsSep " " cfg.microvmFlags);
 
       # MicroVM service to validate ACPI hardware info

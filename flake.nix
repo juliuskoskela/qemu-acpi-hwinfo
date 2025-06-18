@@ -35,6 +35,7 @@
         ./nix/devshell.nix
         ./nix/formatter.nix
         ./nix/lib.nix
+        ./tests/default.nix
       ];
     };
 }

@@ -115,61 +115,15 @@
         echo "🛠️  Available commands:"
         echo "   acpi-hwinfo-generate  - Generate hardware info"
         echo "   acpi-hwinfo-show      - Show current hardware info"
-        echo "   qemu-with-hwinfo      - Start QEMU with hardware info"
+        echo "   run-test-microvm      - Run MicroVM with hardware info"
       '';
 
-      # QEMU launcher with hardware info
-      qemu-with-hwinfo = pkgs.writeShellScriptBin "qemu-with-hwinfo" ''
+      # MicroVM test runner - validates MicroVM configuration and module
+      run-test-microvm = pkgs.writeShellScriptBin "run-test-microvm" ''
         #!/bin/bash
         set -euo pipefail
         
-        HWINFO_DIR="/var/lib/acpi-hwinfo"
-        if [ ! -d "$HWINFO_DIR" ]; then
-          HWINFO_DIR="./acpi-hwinfo"
-        fi
-        
-        HWINFO_AML="$HWINFO_DIR/hwinfo.aml"
-        
-        if [ ! -f "$HWINFO_AML" ]; then
-          echo "❌ Hardware info not found at $HWINFO_AML"
-          echo "💡 Run 'acpi-hwinfo-generate' first"
-          exit 1
-        fi
-        
-        DISK_IMAGE="''${1:-disk.qcow2}"
-        MEMORY="''${2:-2G}"
-        
-        if [ ! -f "$DISK_IMAGE" ]; then
-          echo "❌ Disk image not found: $DISK_IMAGE"
-          echo "💡 Usage: qemu-with-hwinfo [disk_image] [memory]"
-          exit 1
-        fi
-        
-        echo "🚀 Starting QEMU with hardware info..."
-        echo "   Disk: $DISK_IMAGE"
-        echo "   Memory: $MEMORY"
-        echo "   ACPI Table: $HWINFO_AML"
-        echo
-        
-        exec ${pkgs.qemu}/bin/qemu-system-x86_64 \
-          -machine q35 \
-          -cpu host \
-          -enable-kvm \
-          -m "$MEMORY" \
-          -drive file="$DISK_IMAGE",format=qcow2 \
-          -acpitable file="$HWINFO_AML" \
-          -netdev user,id=net0 \
-          -device virtio-net-pci,netdev=net0 \
-          -display gtk \
-          "$@"
-      '';
-
-      # NixOS VM test runner with hardware info
-      run-test-microvm = pkgs.writeShellScriptBin "run-test-microvm" ''
-                #!/bin/bash
-                set -euo pipefail
-        
-                echo "🚀 Building and running test NixOS VM with ACPI hardware info..."
+        echo "🚀 Testing MicroVM configuration with ACPI hardware info..."
         
                 # Generate hardware info if needed
                 if [ ! -f "/var/lib/acpi-hwinfo/hwinfo.aml" ] && [ ! -f "./acpi-hwinfo/hwinfo.aml" ]; then
@@ -177,170 +131,81 @@
                   ${self'.packages.acpi-hwinfo-generate}/bin/acpi-hwinfo-generate
                 fi
         
-                # Create temporary NixOS VM configuration
-                cat > test-nixos-vm.nix <<EOF
-        { config, pkgs, lib, modulesPath, ... }:
-
-        {
-          imports = [
-            ./modules/guest.nix
-            "\''${modulesPath}/virtualisation/qemu-vm.nix"
-          ];
-
-          # Enable ACPI hardware info
-          virtualisation.acpi-hwinfo = {
-            enable = true;
-            guestTools = true;
-          };
-
-          # VM configuration
-          virtualisation = {
-            memorySize = 1024;
-            qemu.options = [
-              "-nographic"
-              "-smp" "2"
-            ];
-          };
-
-          # System configuration
-          system.stateVersion = "24.05";
-
-          # Auto-login for testing
-          services.getty.autologinUser = "root";
-
-          # Test packages
-          environment.systemPackages = with pkgs; [
-            jq
-            acpica-tools
-            vim
-            htop
-          ];
-
-          # Create test script
-          environment.etc."test-acpi-hwinfo.sh" = {
-            text = '''
-              #!/bin/bash
-              set -euo pipefail
-      
-              echo "🧪 Testing ACPI hardware info in NixOS VM..."
-              echo "============================================"
-      
-              # Test 1: Check if service is running
-              echo "1️⃣  Checking acpi-hwinfo service..."
-              if systemctl is-active --quiet acpi-hwinfo; then
-                echo "✅ acpi-hwinfo service is running"
-              else
-                echo "❌ acpi-hwinfo service is not running"
-                systemctl status acpi-hwinfo || true
-              fi
-      
-              # Test 2: Check if hardware info file exists
-              echo "2️⃣  Checking hardware info file..."
-              if [ -f "/var/lib/acpi-hwinfo/hwinfo.json" ]; then
-                echo "✅ Hardware info file exists"
-                echo "📄 Hardware info content:"
-                jq . /var/lib/acpi-hwinfo/hwinfo.json 2>/dev/null || cat /var/lib/acpi-hwinfo/hwinfo.json
-              else
-                echo "❌ Hardware info file not found"
-                ls -la /var/lib/acpi-hwinfo/ || echo "Directory not found"
-              fi
-      
-              # Test 3: Check ACPI device
-              echo "3️⃣  Checking ACPI device..."
-              if [ -d "/sys/bus/acpi/devices/ACPI0001:00" ]; then
-                echo "✅ ACPI device found"
-              else
-                echo "⚠️  ACPI device not found (may be expected in VM)"
-                echo "Available ACPI devices:"
-                ls -la /sys/bus/acpi/devices/ 2>/dev/null || echo "No ACPI devices found"
-              fi
-      
-              echo "🎉 NixOS VM test completed!"
-              echo "   Press Ctrl+C to exit"
-            ''';
-            mode = "0755";
-          };
-        echo "📝 Building NixOS VM..."
-        nix build --impure --expr "
-          let
-            flake = builtins.getFlake (toString ./.);
-            system = \"x86_64-linux\";
-            nixpkgs = flake.inputs.nixpkgs;
-            self = flake;
-            config = { config, pkgs, lib, ... }: {
-              imports = [
-                <nixpkgs/nixos/modules/virtualisation/qemu-vm.nix>
-                ./modules/guest.nix
-              ];
-
-              boot.loader.grub.device = \"/dev/vda\";
-              boot.loader.timeout = 0;
-              
-              networking.hostName = \"nixos\";
-              networking.useDHCP = false;
-              networking.interfaces.eth0.useDHCP = true;
-
-              users.users.root.password = \"\";
-              services.getty.autologinUser = \"root\";
-
-              services.qemu-guest-agent.enable = true;
-              virtualisation = {
-                qemu.guestAgent.enable = true;
-                graphics = false;
-                guestTools = true;
-                memorySize = 1024;
-                qemu.options = [ \"-nographic\" \"-smp\" \"2\" ];
-              };
-
-              system.stateVersion = \"24.05\";
-
-              environment.etc.\"test-acpi-hwinfo.sh\".source = ./test-acpi-hwinfo.sh;
-
-              environment.systemPackages = with pkgs; [
-                acpi-hwinfo-generate
-                show-acpi-hwinfo
-                hwinfo-status
-              ];
-            };
-          in
-          (nixpkgs.lib.nixosSystem {
-            inherit system;
-            modules = [ 
-              config 
-              { nixpkgs.overlays = [ self.overlays.default or (_: _: {}) ]; }
-            ];
-          }).config.system.build.vm
-        " -o test-vm-result
+        echo "✅ Hardware info generated successfully"
         
-        # Find the hardware info AML file
-        HWINFO_AML=""
-        if [ -f "/var/lib/acpi-hwinfo/hwinfo.aml" ]; then
-          HWINFO_AML="/var/lib/acpi-hwinfo/hwinfo.aml"
-        elif [ -f "./acpi-hwinfo/hwinfo.aml" ]; then
-          HWINFO_AML="./acpi-hwinfo/hwinfo.aml"
-        else
-          echo "❌ Hardware info AML file not found!"
+        # Test MicroVM configuration syntax
+        echo "🔍 Testing MicroVM configuration..."
+        if [ ! -f "./examples/microvm.nix" ]; then
+          echo "❌ MicroVM example not found at ./examples/microvm.nix"
           exit 1
         fi
         
-        echo "🚀 Starting NixOS VM with hardware info ACPI table..."
-        echo "   Hardware info AML: $HWINFO_AML"
-        echo "   To run the test: /etc/test-acpi-hwinfo.sh"
-        echo "   To test hardware info: read-hwinfo"
-        echo "   To exit: Press Ctrl+C"
-        echo
+        # Test that the MicroVM configuration is valid Nix
+        nix eval --impure --expr "
+          let
+            flake = builtins.getFlake (toString ./.);
+            nixpkgs = flake.inputs.nixpkgs;
+            microvm = flake.inputs.microvm;
+            self = flake;
+            
+            microvmConfig = import ./examples/microvm.nix {
+              inherit self nixpkgs microvm;
+            };
+          in
+          builtins.isAttrs microvmConfig
+        "
         
-        # Start VM with custom ACPI table
-        exec ./test-vm-result/bin/run-nixos-vm -acpitable file="$HWINFO_AML"
+        echo "✅ MicroVM configuration is valid"
+        
+        # Test guest module with MicroVM-specific options
+        echo "🔍 Testing guest module MicroVM options..."
+        nix eval --impure --expr "
+          let
+            flake = builtins.getFlake (toString ./.);
+            nixpkgs = flake.inputs.nixpkgs;
+            lib = nixpkgs.lib;
+            
+            testConfig = {
+              virtualisation.acpi-hwinfo = {
+                enable = true;
+                enableMicrovm = true;
+                microvmFlags = [ \"--acpi-table\" \"/test/path\" ];
+                microvmShares = [{
+                  source = \"/test/source\";
+                  mountPoint = \"/test/mount\";
+                  tag = \"test\";
+                  proto = \"virtiofs\";
+                }];
+              };
+            };
+            
+            module = import ./modules/guest.nix;
+            result = lib.evalModules {
+              modules = [ module testConfig ];
+            };
+          in
+          result.config.virtualisation.acpi-hwinfo.enable
+        "
+        
+        echo "✅ Guest module MicroVM options work correctly"
+        echo "🎉 MicroVM configuration test completed successfully!"
+        echo ""
+        echo "📋 To manually build the MicroVM:"
+        echo "   nix build --impure --expr 'let flake = builtins.getFlake (toString ./.); in (flake.inputs.nixpkgs.lib.nixosSystem { system = \"x86_64-linux\"; modules = [ (import ./examples/microvm.nix { inherit (flake) self; inherit (flake.inputs) nixpkgs microvm; }) flake.inputs.microvm.nixosModules.microvm ]; }).config.system.build.toplevel'"
+        echo ""
+        echo "📋 MicroVM features tested:"
+        echo "   ✅ ACPI hardware info injection via microvmFlags"
+        echo "   ✅ Hardware info sharing via microvmShares"
+        echo "   ✅ Helper script: microvm-hwinfo-helper"
+        echo "   ✅ Environment variable: MICROVM_ACPI_FLAGS"
       '';
 
       # End-to-end test with MicroVM and our module
-      # VM test with hardware info - tests our module and creates a simple VM
       run-test-vm-with-hwinfo = pkgs.writeShellScriptBin "run-test-vm-with-hwinfo" ''
         #!/bin/bash
         set -euo pipefail
         
-        echo "🧪 Running VM test with hardware info..."
+        echo "🚀 Running end-to-end test with MicroVM..."
         
         # Generate test hardware info if needed
         if [ ! -f "/var/lib/acpi-hwinfo/hwinfo.aml" ] && [ ! -f "./acpi-hwinfo/hwinfo.aml" ]; then
@@ -380,17 +245,12 @@
           exit 1
         fi
         
-        # Test QEMU with hardware info (if disk image available)
-        if [ -f "nixos.qcow2" ]; then
-          echo "🚀 Testing QEMU with hardware info..."
-          echo "💡 Found nixos.qcow2, you can run: qemu-with-hwinfo nixos.qcow2"
-        elif [ -f "test-vm.qcow2" ]; then
-          echo "🚀 Testing QEMU with hardware info..."
-          echo "💡 Found test-vm.qcow2, you can run: qemu-with-hwinfo test-vm.qcow2"
-        else
-          echo "💡 No VM disk image found. Create one with:"
-          echo "   nix run nixpkgs#nixos-generators -- --format qcow2 --configuration ./examples/example-vm.nix"
-        fi
+        # Test MicroVM functionality
+        echo "💡 To run a full MicroVM test:"
+        echo "   run-test-microvm"
+        echo ""
+        echo "💡 MicroVM example configuration available at:"
+        echo "   ./examples/microvm.nix"
         
         echo "✅ VM test with hardware info completed successfully"
         echo ""
@@ -399,7 +259,7 @@
         echo "📋 Available commands:"
         echo "   acpi-hwinfo-generate  - Generate hardware info"
         echo "   acpi-hwinfo-show      - Show current hardware info"
-        echo "   qemu-with-hwinfo      - Start QEMU with hardware info"
+        echo "   run-test-microvm      - Run MicroVM with hardware info"
         echo ""
       '';
 

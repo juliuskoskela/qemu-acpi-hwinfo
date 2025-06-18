@@ -140,7 +140,7 @@
             cp hwinfo.aml $out
           '';
         in
-        inputs.microvm.lib.buildMicrovm {
+        inputs.microvm.lib.buildMicroVM {
           inherit pkgs;
           config = {
             imports = [

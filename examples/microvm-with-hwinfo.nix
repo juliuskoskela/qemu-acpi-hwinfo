@@ -1,3 +1,4 @@
+# Example MicroVM configuration with ACPI hardware info
 { config, pkgs, ... }:
 {
   imports = [
@@ -11,26 +12,32 @@
     hypervisor = "qemu";
 
     # Network configuration
-    interfaces = [{
-      type = "user";
-      id = "vm-net";
-      mac = "02:00:00:00:00:01";
-    }];
+    interfaces = [
+      {
+        type = "user";
+        id = "vm-net";
+        mac = "02:00:00:00:00:01";
+      }
+    ];
 
     # Share the Nix store
-    shares = [{
-      source = "/nix/store";
-      mountPoint = "/nix/.ro-store";
-      tag = "ro-store";
-      proto = "virtiofs";
-    }] ++ (
-      # Share hardware info directory if it exists
-      if builtins.pathExists "/var/lib/acpi-hwinfo" then [{
-        source = "/var/lib/acpi-hwinfo";
-        mountPoint = "/var/lib/acpi-hwinfo";
-        tag = "acpi-hwinfo";
+    shares = [
+      {
+        source = "/nix/store";
+        mountPoint = "/nix/.ro-store";
+        tag = "ro-store";
         proto = "virtiofs";
-      }] else [ ]
+      }
+    ] ++ (
+      # Share hardware info directory if it exists
+      if builtins.pathExists "/var/lib/acpi-hwinfo" then [
+        {
+          source = "/var/lib/acpi-hwinfo";
+          mountPoint = "/var/lib/acpi-hwinfo";
+          tag = "acpi-hwinfo";
+          proto = "virtiofs";
+        }
+      ] else [ ]
     );
 
     # QEMU options for ACPI table injection

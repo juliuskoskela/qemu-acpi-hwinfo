@@ -24,10 +24,10 @@
         { config, pkgs, ... }:
         {
           imports = [ ${inputs.self}/modules/host.nix ];
-  
+
           services.acpi-hwinfo.enable = true;
           system.stateVersion = "24.05";
-  
+
           # Minimal system for testing
           boot.isContainer = true;
           networking.hostName = "acpi-test";
