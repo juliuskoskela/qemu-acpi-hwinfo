@@ -21,6 +21,10 @@
                 virtualisation.vmVariant = {
                   virtualisation.diskSize = 4096; # 4GB disk
                   virtualisation.memorySize = 2048; # 2GB RAM
+                  # Add ACPI table with hardware info
+                  virtualisation.qemu.options = [
+                    "-acpitable" "file=/var/lib/acpi-hwinfo/hwinfo.aml"
+                  ];
                 };
 
                 # System configuration
@@ -171,9 +175,8 @@
         echo "   Use 'system_powerdown' in QEMU monitor to shutdown"
         echo
         
-        # Run the VM with our hardware info using qemu-with-hwinfo in headless mode
-        export QEMU_OPTS="-nographic -serial mon:stdio"
-        exec ${self'.packages.qemu-with-hwinfo}/bin/qemu-with-hwinfo "$VM_IMAGE/bin/run-nixos-vm"
+        # Run the VM with our hardware info in headless mode
+        QEMU_OPTS="-nographic -serial mon:stdio" exec "$VM_IMAGE/bin/run-nixos-vm"
       '';
 
       # Script to build VM and run with qemu-with-hwinfo

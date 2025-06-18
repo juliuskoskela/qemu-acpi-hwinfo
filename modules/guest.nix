@@ -35,12 +35,8 @@ in
   };
 
   config = mkIf cfg.enable (mkMerge [
-    # MicroVM integration
-    (mkIf cfg.enableMicrovm {
-      microvm.qemu.extraArgs = mkIf (cfg.hostHwinfoPath != "") [
-        "-acpitable" "file=${cfg.hostHwinfoPath}"
-      ];
-    })
+    # MicroVM integration is handled in the microvm test configuration
+    # to avoid dependency issues with regular NixOS systems
 
     # Common configuration
     {
@@ -50,6 +46,7 @@ in
         # Tool to read hardware info from ACPI tables
         (pkgs.writeShellScriptBin "read-hwinfo" ''
           #!/bin/bash
+          PATH=${pkgs.binutils}/bin:$PATH
         
           echo "🔍 Reading hardware info from ACPI tables..."
           echo

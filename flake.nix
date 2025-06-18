@@ -34,6 +34,7 @@
         ./modules/default.nix
         ./tests/default.nix
         ./tests/vm-image.nix
+        ./tests/microvm.nix
         ./nix/devshell.nix
         ./nix/formatter.nix
         ./nix/lib.nix
