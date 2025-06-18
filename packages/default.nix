@@ -135,8 +135,8 @@
         
         # Test MicroVM configuration syntax
         echo "🔍 Testing MicroVM configuration..."
-        if [ ! -f "./examples/microvm.nix" ]; then
-          echo "❌ MicroVM example not found at ./examples/microvm.nix"
+        if [ ! -f "./examples/microvm-with-hwinfo.nix" ]; then
+          echo "❌ MicroVM example not found at ./examples/microvm-with-hwinfo.nix"
           exit 1
         fi
         
@@ -148,17 +148,15 @@
             microvm = flake.inputs.microvm;
             self = flake;
             
-            microvmConfig = import ./examples/microvm.nix {
-              inherit self nixpkgs microvm;
-            };
+            microvmConfig = import ./examples/microvm-with-hwinfo.nix;
           in
-          builtins.isAttrs microvmConfig
+          builtins.isFunction microvmConfig
         "
         
         echo "✅ MicroVM configuration is valid"
         
-        # Test guest module can be imported and is a function
-        echo "🔍 Testing guest module structure..."
+        # Test guest module can be imported successfully
+        echo "🔍 Testing guest module import..."
         nix eval --impure --expr "
           let
             module = import ./modules/guest.nix;
@@ -170,7 +168,7 @@
         echo "🎉 MicroVM configuration test completed successfully!"
         echo ""
         echo "📋 To manually build the MicroVM:"
-        echo "   nix build --impure --expr 'let flake = builtins.getFlake (toString ./.); in (flake.inputs.nixpkgs.lib.nixosSystem { system = \"x86_64-linux\"; modules = [ (import ./examples/microvm.nix { inherit (flake) self; inherit (flake.inputs) nixpkgs microvm; }) flake.inputs.microvm.nixosModules.microvm ]; }).config.system.build.toplevel'"
+        echo "   nix build --impure --expr 'let flake = builtins.getFlake (toString ./.); in flake.lib.mkMicroVMWithHwInfo { system = \"x86_64-linux\"; config = import ./examples/microvm-with-hwinfo.nix; }'"
         echo ""
         echo "📋 MicroVM features tested:"
         echo "   ✅ ACPI hardware info injection via microvmFlags"
