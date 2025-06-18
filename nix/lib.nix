@@ -94,6 +94,28 @@
           inherit nvmeSerial macAddress;
         };
 
+      # Function to create a MicroVM with hardware info
+      mkMicroVMWithHwInfo = { system, config ? {}, nvmeSerial ? null, macAddress ? null }:
+        let
+          pkgs = inputs.nixpkgs.legacyPackages.${system};
+        in
+        inputs.microvm.lib.buildMicrovm {
+          inherit pkgs;
+          config = {
+            imports = [
+              inputs.self.nixosModules.acpi-hwinfo
+              config
+            ];
+            
+            # Enable ACPI hardware info service
+            services.acpi-hwinfo = {
+              enable = true;
+              nvmeSerial = nvmeSerial;
+              macAddress = macAddress;
+            };
+          };
+        };
+
 
     };
   };
