@@ -234,24 +234,10 @@
         fi
         
         # Test MicroVM functionality
-        echo "🚀 Building MicroVM with ACPI hardware info..."
+        echo "🚀 Running test MicroVM with ACPI hardware info..."
         
-        # Build the test MicroVM from flake output
-        echo "🔍 Building MicroVM test configuration..."
-        nix build .#microvm-test -o microvm-result
-        
-        echo "✅ MicroVM test configuration built successfully"
-        echo ""
-        echo "📋 To manually run the MicroVM:"
-        echo "   nix run .#microvm-test"
-        echo ""
-        echo "📋 MicroVM features validated:"
-        echo "   ✅ ACPI hardware info injection via microvmFlags"
-        echo "   ✅ Hardware info sharing via microvmShares"
-        echo "   ✅ Helper script: microvm-hwinfo-helper"
-        echo "   ✅ Environment variable: MICROVM_ACPI_FLAGS"
-        echo ""
-        echo "🎉 End-to-end test completed successfully!"
+        # Run the test MicroVM script
+        exec ${self'.packages.test-microvm}/bin/test-microvm
       '';
 
 

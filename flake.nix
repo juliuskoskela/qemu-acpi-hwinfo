@@ -37,5 +37,27 @@
         ./nix/lib.nix
         ./tests/default.nix
       ];
+
+      perSystem = { config, self', inputs', pkgs, system, ... }: {
+        apps = {
+          # MicroVM runner app
+          microvm-run = {
+            type = "app";
+            program = let
+              example = import ./examples/microvm.nix { 
+                self = inputs.self; 
+                inherit (inputs) nixpkgs microvm; 
+              };
+              nixosSystem = inputs.nixpkgs.lib.nixosSystem {
+                inherit system;
+                modules = [
+                  example
+                ];
+              };
+              runner = nixosSystem.config.microvm.declaredRunner;
+            in "${runner}/bin/microvm-run";
+          };
+        };
+      };
     };
 }
