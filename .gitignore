@@ -16,14 +16,19 @@ test-hwinfo.*
 *.iso
 
 # Test files and temporary configurations
-test-*
+test-*.qcow2
+test-*.nix
+test-*.json
+test-*.log
 *-test.*
 test-nixos-vm.nix
 *-test-*
-test*.nix
 test*.qcow2
 fresh-*.qcow2
 hwinfo-*.qcow2
+
+# Allow specific test scripts
+!test-acpi-hwinfo.sh
 
 # Temporary files
 *.tmp
