@@ -179,7 +179,7 @@
         QEMU_OPTS="-nographic -serial mon:stdio" exec "$VM_IMAGE/bin/run-nixos-vm"
       '';
 
-      # Script to build VM and run with qemu-with-hwinfo
+      # Script to build VM and run with qemu-with-hwinfo (demonstration)
       run-test-vm-with-hwinfo = pkgs.writeShellScriptBin "run-test-vm-with-hwinfo" ''
         set -euo pipefail
         
@@ -202,16 +202,18 @@
         cat /var/lib/acpi-hwinfo/hwinfo.json
         echo
         
-        echo "🚀 Starting VM with qemu-with-hwinfo..."
-        echo "   This uses our custom QEMU wrapper with ACPI hardware info"
+        echo "ℹ️  Note: This VM already has ACPI table loading configured"
+        echo "   The qemu-with-hwinfo script is designed for external disk images"
+        echo "   For this test VM, use 'nix run .#run-test-vm' instead"
+        echo
+        echo "🚀 Starting test VM with built-in ACPI hardware info..."
         echo "   VM will auto-login as root"
         echo "   Run '/etc/test-acpi-hwinfo.sh' inside VM to test"
         echo "   Use 'system_powerdown' in QEMU monitor to shutdown"
         echo
         
-        # Run with our qemu wrapper in headless mode
-        export QEMU_OPTS="-nographic -serial mon:stdio"
-        exec ${self'.packages.qemu-with-hwinfo}/bin/qemu-with-hwinfo "$VM_IMAGE/bin/run-nixos-vm"
+        # Run the VM with our hardware info in headless mode
+        QEMU_OPTS="-nographic -serial mon:stdio" exec "$VM_IMAGE/bin/run-nixos-vm"
       '';
 
       # Automated test runner that runs the test and exits
