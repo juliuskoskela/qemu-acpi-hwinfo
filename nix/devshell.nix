@@ -91,24 +91,39 @@
             echo "MAC Address: $MAC_ADDRESS"
             echo
             echo "🛠️  Available commands:"
-            echo "   hwinfo-status         - Show detailed hwinfo status"
-            echo "   create-test-hwinfo    - Create test hwinfo files"
-            echo "   qemu-with-hwinfo      - Start QEMU with runtime hwinfo"
-            echo "   integration-test      - Run integration tests"
-            echo "   run-test-vm           - Build and run test VM"
+            echo "   hwinfo-status           - Show detailed hwinfo status"
+            echo "   acpi-hwinfo-generate    - Generate hardware info"
+            echo "   acpi-hwinfo-show        - Show current hardware info"
+            echo "   qemu-with-hwinfo        - Start QEMU with runtime hwinfo"
             echo "   run-test-vm-with-hwinfo - Run test VM with hardware info"
-            echo "   run-automated-vm-test - Run automated VM test (auto-exit)"
+            echo "   create-nixos-vm         - Create a simple NixOS VM for testing"
             echo
             echo "💡 For NixOS systems, enable the acpi-hwinfo module:"
             echo "   services.acpi-hwinfo.enable = true;"
           '';
         }
         {
-          name = "create-test-hwinfo";
-          help = "Create test hardware info files";
+          name = "acpi-hwinfo-generate";
+          help = "Generate hardware info";
           command = ''
-            echo "🧪 Creating test hardware info..."
-            nix --extra-experimental-features "nix-command flakes" run .#create-test-hwinfo
+            echo "🧪 Generating hardware info..."
+            nix --extra-experimental-features "nix-command flakes" run .#acpi-hwinfo-generate
+          '';
+        }
+        {
+          name = "acpi-hwinfo-show";
+          help = "Show current hardware info";
+          command = ''
+            echo "📊 Showing hardware info..."
+            nix --extra-experimental-features "nix-command flakes" run .#acpi-hwinfo-show
+          '';
+        }
+        {
+          name = "hwinfo-status";
+          help = "Show detailed hwinfo status";
+          command = ''
+            echo "🔍 Checking hwinfo status..."
+            nix --extra-experimental-features "nix-command flakes" run .#hwinfo-status
           '';
         }
         {
@@ -120,35 +135,63 @@
           '';
         }
         {
-          name = "integration-test";
-          help = "Run integration tests";
-          command = ''
-            echo "🔬 Running integration tests..."
-            nix --extra-experimental-features "nix-command flakes" run .#integration-test
-          '';
-        }
-        {
-          name = "run-test-vm";
-          help = "Build and run test VM";
-          command = ''
-            echo "🚀 Building and running test VM..."
-            nix --extra-experimental-features "nix-command flakes" run .#run-test-vm
-          '';
-        }
-        {
           name = "run-test-vm-with-hwinfo";
-          help = "Run test VM with qemu-with-hwinfo";
+          help = "Run test VM with hardware info";
           command = ''
             echo "🚀 Running test VM with hardware info..."
             nix --extra-experimental-features "nix-command flakes" run .#run-test-vm-with-hwinfo
           '';
         }
         {
-          name = "run-automated-vm-test";
-          help = "Run automated VM test (runs test and exits)";
+          name = "create-nixos-vm";
+          help = "Create a simple NixOS VM for testing";
           command = ''
-            echo "🔬 Running automated VM test..."
-            nix --extra-experimental-features "nix-command flakes" run .#run-automated-vm-test
+            echo "🔨 Creating NixOS VM image..."
+            echo "This will create a minimal NixOS VM with our guest module enabled."
+            echo
+            
+            # Create a temporary configuration
+            cat > vm-config.nix <<EOF
+{ config, pkgs, ... }:
+{
+  imports = [ <nixpkgs/nixos/modules/virtualisation/qemu-vm.nix> ];
+  
+  # Enable our guest module
+  services.acpi-hwinfo = {
+    enable = true;
+    guestTools = true;
+  };
+  
+  # Basic VM configuration
+  virtualisation = {
+    memorySize = 2048;
+    diskSize = 4096;
+    graphics = false;
+  };
+  
+  # Auto-login for testing
+  services.getty.autologinUser = "root";
+  
+  # Test packages
+  environment.systemPackages = with pkgs; [
+    jq
+    acpica-tools
+    vim
+    htop
+  ];
+  
+  system.stateVersion = "24.05";
+}
+EOF
+            
+            echo "📝 Building VM with configuration..."
+            nix-build '<nixpkgs/nixos>' -A vm -I nixos-config=./vm-config.nix -o nixos-vm
+            
+            echo "✅ VM created! You can now run:"
+            echo "   run-test-vm-with-hwinfo nixos-vm/nixos.qcow2"
+            echo
+            echo "Or manually with:"
+            echo "   ./nixos-vm/bin/run-nixos-vm"
           '';
         }
       ];

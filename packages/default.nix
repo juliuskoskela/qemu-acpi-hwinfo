@@ -151,16 +151,29 @@ EOF
         echo "   ACPI Table: $HWINFO_AML"
         echo
         
+        # Check if we're in a headless environment or if display is requested
+        DISPLAY_OPTS="-nographic -serial mon:stdio"
+        if [ "''${QEMU_DISPLAY:-}" = "gtk" ] && [ "''${DISPLAY:-}" != "" ]; then
+          # Only use GTK if explicitly requested and DISPLAY is available
+          DISPLAY_OPTS="-display gtk"
+        elif [ "''${QEMU_DISPLAY:-}" = "vnc" ]; then
+          # Use VNC if requested
+          DISPLAY_OPTS="-display vnc=:1"
+          echo "🖥️  VNC display available on localhost:5901"
+        fi
+        
+        echo "🔧 Display mode: $DISPLAY_OPTS"
+        
         exec ${pkgs.qemu}/bin/qemu-system-x86_64 \
           -machine q35 \
           -cpu host \
           -enable-kvm \
           -m "$MEMORY" \
-          -drive file="$DISK_IMAGE",format=qcow2 \
+          -drive file="$DISK_IMAGE",format=qcow2,if=virtio \
           -acpitable file="$HWINFO_AML" \
           -netdev user,id=net0 \
           -device virtio-net-pci,netdev=net0 \
-          -display gtk \
+          $DISPLAY_OPTS \
           "$@"
       '';
 
@@ -193,6 +206,9 @@ EOF
         
         echo "🚀 Starting test VM..."
         echo "   Using disk image: $DISK_IMAGE"
+        echo "   Mode: Headless (console access)"
+        echo "   To exit: Press Ctrl+A then X, or use 'system_powerdown' in monitor"
+        echo
         
         ${self'.packages.qemu-with-hwinfo}/bin/qemu-with-hwinfo "$DISK_IMAGE" 2G
       '';
