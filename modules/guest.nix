@@ -21,6 +21,45 @@ in
       description = "Enable MicroVM integration with hardware info";
     };
 
+    microvmFlags = mkOption {
+      type = types.listOf types.str;
+      default = [];
+      description = "Additional flags to pass to MicroVM for hardware info integration";
+      example = [ "--acpi-table" "/var/lib/acpi-hwinfo/hwinfo.aml" ];
+    };
+
+    microvmShares = mkOption {
+      type = types.listOf (types.submodule {
+        options = {
+          source = mkOption {
+            type = types.str;
+            description = "Host path to share";
+          };
+          mountPoint = mkOption {
+            type = types.str;
+            description = "Guest mount point";
+          };
+          tag = mkOption {
+            type = types.str;
+            description = "Share tag";
+          };
+          proto = mkOption {
+            type = types.str;
+            default = "virtiofs";
+            description = "Protocol to use for sharing";
+          };
+        };
+      });
+      default = [];
+      description = "Additional virtiofs shares for hardware info";
+      example = [{
+        source = "/var/lib/acpi-hwinfo";
+        mountPoint = "/var/lib/acpi-hwinfo";
+        tag = "hwinfo";
+        proto = "virtiofs";
+      }];
+    };
+
     enableQemuIntegration = mkOption {
       type = types.bool;
       default = true;
@@ -180,6 +219,24 @@ in
         "d /var/lib/acpi-hwinfo 0755 root root -"
       ];
 
+      # Configure MicroVM shares for hardware info
+      microvm.shares = mkMerge [
+        # User-specified shares
+        (mkIf (cfg.microvmShares != []) cfg.microvmShares)
+        
+        # Default hardware info share if not already configured
+        (mkIf (cfg.microvmShares == [] && config ? microvm) [{
+          source = "/var/lib/acpi-hwinfo";
+          mountPoint = "/var/lib/acpi-hwinfo";
+          tag = "hwinfo";
+          proto = "virtiofs";
+        }])
+      ];
+
+      # Environment variable for MicroVM flags
+      environment.variables.MICROVM_ACPI_FLAGS = mkIf (cfg.microvmFlags != []) 
+        (lib.concatStringsSep " " cfg.microvmFlags);
+
       # MicroVM service to validate ACPI hardware info
       systemd.services.microvm-acpi-hwinfo = {
         description = "MicroVM ACPI Hardware Info Validation";
@@ -193,6 +250,11 @@ in
             set -euo pipefail
             
             echo "🔍 Validating MicroVM ACPI hardware info..."
+            
+            # Show configured flags if any
+            if [ -n "''${MICROVM_ACPI_FLAGS:-}" ]; then
+              echo "🔧 MicroVM ACPI flags: $MICROVM_ACPI_FLAGS"
+            fi
             
             # Check if hardware info is available via virtiofs share
             if [ -f "/var/lib/acpi-hwinfo/hwinfo.json" ]; then
@@ -224,6 +286,41 @@ in
           '';
         };
       };
+
+      # Helper script for MicroVM with hardware info
+      environment.systemPackages = mkIf cfg.guestTools [
+        (pkgs.writeShellScriptBin "microvm-hwinfo-helper" ''
+          #!/bin/bash
+          
+          echo "🔧 MicroVM Hardware Info Helper"
+          echo "==============================="
+          echo
+          
+          # Show current configuration
+          echo "📋 Configuration:"
+          echo "   Host hwinfo path: ${cfg.hostHwinfoPath}"
+          echo "   MicroVM integration: ${if cfg.enableMicrovm then "enabled" else "disabled"}"
+          if [ -n "''${MICROVM_ACPI_FLAGS:-}" ]; then
+            echo "   ACPI flags: $MICROVM_ACPI_FLAGS"
+          fi
+          echo
+          
+          # Show available commands
+          echo "📋 Available commands:"
+          echo "   read-hwinfo           - Read hardware info from ACPI tables"
+          echo "   show-acpi-hwinfo      - Show ACPI device status"
+          echo "   extract-hwinfo-json   - Extract hardware info as JSON"
+          echo
+          
+          # Show mount points
+          echo "📁 Mount points:"
+          if [ -d "/var/lib/acpi-hwinfo" ]; then
+            echo "   /var/lib/acpi-hwinfo: $(ls -la /var/lib/acpi-hwinfo 2>/dev/null | wc -l) files"
+          else
+            echo "   /var/lib/acpi-hwinfo: not mounted"
+          fi
+        '')
+      ];
     })
 
     # QEMU-specific configuration
