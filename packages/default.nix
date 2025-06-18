@@ -260,47 +260,117 @@
             ''';
             mode = "0755";
           };
-        }
-        EOF
+        echo "📝 Building NixOS VM..."
+        nix build --impure --expr "
+          let
+            flake = builtins.getFlake (toString ./.);
+            system = \"x86_64-linux\";
+            nixpkgs = flake.inputs.nixpkgs;
+            self = flake;
+            config = { config, pkgs, lib, ... }: {
+              imports = [
+                <nixpkgs/nixos/modules/virtualisation/qemu-vm.nix>
+                ./modules/guest.nix
+              ];
 
-                echo "📝 Building NixOS VM..."
-                nix build --impure --expr "
-                  let
-                    flake = builtins.getFlake (toString ./.);
-                    system = \"x86_64-linux\";
-                    nixpkgs = flake.inputs.nixpkgs;
-                    self = flake;
-                    config = import ./test-nixos-vm.nix;
-                  in
-                  (nixpkgs.lib.nixosSystem {
-                    inherit system;
-                    modules = [ 
-                      config 
-                      { nixpkgs.overlays = [ self.overlays.default or (_: _: {}) ]; }
-                    ];
-                  }).config.system.build.vm
-                " -o test-vm-result
+              boot.loader.grub.device = \"/dev/vda\";
+              boot.loader.timeout = 0;
+              
+              networking.hostName = \"nixos\";
+              networking.useDHCP = false;
+              networking.interfaces.eth0.useDHCP = true;
+
+              users.users.root.password = \"\";
+              services.getty.autologinUser = \"root\";
+
+              services.qemu-guest-agent.enable = true;
+              virtualisation = {
+                qemu.guestAgent.enable = true;
+                graphics = false;
+                guestTools = true;
+                memorySize = 1024;
+                qemu.options = [ \"-nographic\" \"-smp\" \"2\" ];
+              };
+
+              system.stateVersion = \"24.05\";
+
+              environment.etc.\"test-acpi-hwinfo.sh\" = {
+                text = ''
+                  #!/bin/bash
+                  set -e
+                  echo \"🧪 Testing ACPI hardware info in VM...\"
+                  
+                  if command -v show-acpi-hwinfo >/dev/null 2>&1; then
+                    echo \"✅ show-acpi-hwinfo command available\"
+                  else
+                    echo \"❌ show-acpi-hwinfo command not found\"
+                    exit 1
+                  fi
+                  
+                  if command -v read-hwinfo >/dev/null 2>&1; then
+                    echo \"✅ read-hwinfo command available\"
+                  else
+                    echo \"❌ read-hwinfo command not found\"
+                    exit 1
+                  fi
+                  
+                  ACPI_DEVICES=\$(show-acpi-hwinfo 2>/dev/null | wc -l)
+                  if [ \"\$ACPI_DEVICES\" -gt 0 ]; then
+                    echo \"✅ Found \$ACPI_DEVICES ACPI devices\"
+                    echo \"📋 Sample ACPI devices:\"
+                    show-acpi-hwinfo | head -10
+                  else
+                    echo \"❌ No ACPI devices found\"
+                    exit 1
+                  fi
+                  
+                  if read-hwinfo; then
+                    echo \"✅ Hardware info read successfully\"
+                  else
+                    echo \"⚠️  Hardware info not available (expected if no ACPI table injected)\"
+                  fi
+                  
+                  echo \"🎉 All VM tests completed successfully!\"
+                '';
+                mode = \"0755\";
+              };
+
+              environment.systemPackages = with pkgs; [
+                acpi-hwinfo-generate
+                show-acpi-hwinfo
+                hwinfo-status
+              ];
+            };
+          in
+          (nixpkgs.lib.nixosSystem {
+            inherit system;
+            modules = [ 
+              config 
+              { nixpkgs.overlays = [ self.overlays.default or (_: _: {}) ]; }
+            ];
+          }).config.system.build.vm
+        " -o test-vm-result
         
-                # Find the hardware info AML file
-                HWINFO_AML=""
-                if [ -f "/var/lib/acpi-hwinfo/hwinfo.aml" ]; then
-                  HWINFO_AML="/var/lib/acpi-hwinfo/hwinfo.aml"
-                elif [ -f "./acpi-hwinfo/hwinfo.aml" ]; then
-                  HWINFO_AML="./acpi-hwinfo/hwinfo.aml"
-                else
-                  echo "❌ Hardware info AML file not found!"
-                  exit 1
-                fi
+        # Find the hardware info AML file
+        HWINFO_AML=""
+        if [ -f "/var/lib/acpi-hwinfo/hwinfo.aml" ]; then
+          HWINFO_AML="/var/lib/acpi-hwinfo/hwinfo.aml"
+        elif [ -f "./acpi-hwinfo/hwinfo.aml" ]; then
+          HWINFO_AML="./acpi-hwinfo/hwinfo.aml"
+        else
+          echo "❌ Hardware info AML file not found!"
+          exit 1
+        fi
         
-                echo "🚀 Starting NixOS VM with hardware info ACPI table..."
-                echo "   Hardware info AML: $HWINFO_AML"
-                echo "   To run the test: /etc/test-acpi-hwinfo.sh"
-                echo "   To test hardware info: read-hwinfo"
-                echo "   To exit: Press Ctrl+C"
-                echo
+        echo "🚀 Starting NixOS VM with hardware info ACPI table..."
+        echo "   Hardware info AML: $HWINFO_AML"
+        echo "   To run the test: /etc/test-acpi-hwinfo.sh"
+        echo "   To test hardware info: read-hwinfo"
+        echo "   To exit: Press Ctrl+C"
+        echo
         
-                # Start VM with custom ACPI table
-                exec ./test-vm-result/bin/run-nixos-vm -acpitable file="$HWINFO_AML"
+        # Start VM with custom ACPI table
+        exec ./test-vm-result/bin/run-nixos-vm -acpitable file="$HWINFO_AML"
       '';
 
       # End-to-end test with MicroVM and our module
