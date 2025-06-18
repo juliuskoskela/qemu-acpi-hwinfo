@@ -7,6 +7,9 @@
         #!/bin/bash
         set -euo pipefail
         
+        # Import shared hardware detection functions
+        ${inputs.self.lib.hardwareDetectionScript pkgs}
+        
         HWINFO_DIR="/var/lib/acpi-hwinfo"
         
         # Check if we can write to the system directory
@@ -18,49 +21,18 @@
         echo "🔧 Generating ACPI hardware info in $HWINFO_DIR..."
         mkdir -p "$HWINFO_DIR"
         
-        # Detect NVMe serial with multiple fallback methods
-        NVME_SERIAL=""
-        if command -v ${pkgs.nvme-cli}/bin/nvme >/dev/null 2>&1; then
-          # Method 1: nvme id-ctrl (most reliable)
-          for nvme_dev in /dev/nvme*n1; do
-            if [ -e "$nvme_dev" ]; then
-              NVME_SERIAL=$(${pkgs.nvme-cli}/bin/nvme id-ctrl "$nvme_dev" 2>/dev/null | grep '^sn' | awk '{print $3}' || echo "")
-              if [ -n "$NVME_SERIAL" ] && [ "$NVME_SERIAL" != "---------------------" ]; then
-                break
-              fi
-            fi
-          done
-          
-          # Method 2: nvme list fallback
-          if [ -z "$NVME_SERIAL" ] || [ "$NVME_SERIAL" = "---------------------" ]; then
-            NVME_SERIAL=$(${pkgs.nvme-cli}/bin/nvme list 2>/dev/null | awk 'NR>1 && $2 != "---------------------" {print $2; exit}' || echo "")
-          fi
-        fi
-        
-        # Method 3: sysfs fallback
-        if [ -z "$NVME_SERIAL" ] || [ "$NVME_SERIAL" = "---------------------" ]; then
-          if [ -f /sys/class/nvme/nvme0/serial ]; then
-            NVME_SERIAL=$(cat /sys/class/nvme/nvme0/serial 2>/dev/null || echo "")
-          fi
-        fi
-        
-        # Final fallback
-        if [ -z "$NVME_SERIAL" ] || [ "$NVME_SERIAL" = "---------------------" ]; then
-          NVME_SERIAL="no-nvme-detected"
-        fi
-        
-        # Detect MAC address
-        MAC_ADDRESS=""
-        if command -v ${pkgs.iproute2}/bin/ip >/dev/null 2>&1; then
-          MAC_ADDRESS=$(${pkgs.iproute2}/bin/ip link show | awk '/ether/ {print $2; exit}' || echo "")
-        fi
-        if [ -z "$MAC_ADDRESS" ]; then
-          MAC_ADDRESS="00:00:00:00:00:00"
-        fi
+        # Use shared detection functions
+        NVME_SERIAL=$(detect_nvme_serial)
+        MAC_ADDRESS=$(detect_mac_address)
         
         echo "📊 Detected hardware:"
         echo "   NVMe Serial: $NVME_SERIAL"
         echo "   MAC Address: $MAC_ADDRESS"
+        
+        # Validate detected hardware info
+        if ! validate_hardware_info "$NVME_SERIAL" "$MAC_ADDRESS"; then
+          echo "⚠️  Warning: Hardware validation failed, but continuing with detected values"
+        fi
         
         # Generate JSON metadata
         cat >"$HWINFO_DIR/hwinfo.json" <<EOF
@@ -301,7 +273,7 @@ EOF
 }
 EOF
         
-        # Generate ASL using template
+        # Generate ASL using shared template
         cat > "$OUTPUT_DIR/hwinfo.asl" <<EOF
 DefinitionBlock ("hwinfo.aml", "SSDT", 2, "HWINFO", "HWINFO", 0x00000001)
 {
@@ -357,46 +329,12 @@ EOF
         buildPhase = ''
           echo "🔍 Detecting hardware information..."
           
-          # Detect NVMe serial with multiple fallback methods
-          NVME_SERIAL=""
+          # Import shared hardware detection functions
+          ${inputs.self.lib.hardwareDetectionScript pkgs}
           
-          # Method 1: nvme id-ctrl (most reliable)
-          if command -v nvme >/dev/null 2>&1; then
-            for nvme_dev in /dev/nvme*n1; do
-              if [ -e "$nvme_dev" ]; then
-                NVME_SERIAL=$(nvme id-ctrl "$nvme_dev" 2>/dev/null | grep '^sn' | awk '{print $3}' || echo "")
-                if [ -n "$NVME_SERIAL" ] && [ "$NVME_SERIAL" != "---------------------" ]; then
-                  break
-                fi
-              fi
-            done
-            
-            # Method 2: nvme list fallback
-            if [ -z "$NVME_SERIAL" ] || [ "$NVME_SERIAL" = "---------------------" ]; then
-              NVME_SERIAL=$(nvme list 2>/dev/null | awk 'NR>1 && $2 != "---------------------" {print $2; exit}' || echo "")
-            fi
-          fi
-          
-          # Method 3: sysfs fallback
-          if [ -z "$NVME_SERIAL" ] || [ "$NVME_SERIAL" = "---------------------" ]; then
-            if [ -f /sys/class/nvme/nvme0/serial ]; then
-              NVME_SERIAL=$(cat /sys/class/nvme/nvme0/serial 2>/dev/null || echo "")
-            fi
-          fi
-          
-          # Final fallback
-          if [ -z "$NVME_SERIAL" ] || [ "$NVME_SERIAL" = "---------------------" ]; then
-            NVME_SERIAL="no-nvme-detected"
-          fi
-          
-          # Detect MAC address
-          MAC_ADDRESS=""
-          if command -v ip >/dev/null 2>&1; then
-            MAC_ADDRESS=$(ip link show | awk '/ether/ {print $2; exit}' || echo "")
-          fi
-          if [ -z "$MAC_ADDRESS" ]; then
-            MAC_ADDRESS="00:00:00:00:00:00"
-          fi
+          # Use shared detection functions
+          NVME_SERIAL=$(detect_nvme_serial)
+          MAC_ADDRESS=$(detect_mac_address)
           
           echo "📊 Detected hardware:"
           echo "   NVMe Serial: $NVME_SERIAL"
@@ -411,7 +349,7 @@ EOF
 }
 EOF
           
-          # Generate ASL using template
+          # Generate ASL using shared template
           cat > hwinfo.asl <<EOF
 DefinitionBlock ("hwinfo.aml", "SSDT", 2, "HWINFO", "HWINFO", 0x00000001)
 {

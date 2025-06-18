@@ -66,26 +66,12 @@
             echo "💻 Current machine hardware detection:"
             echo
             
-            # Detect NVMe serial
-            NVME_SERIAL=""
-            if command -v nvme >/dev/null 2>&1; then
-              NVME_SERIAL=$(nvme list 2>/dev/null | awk 'NR>1 {print $2; exit}' || echo "")
-            fi
-            if [ -z "$NVME_SERIAL" ] && [ -f /sys/class/nvme/nvme0/serial ]; then
-              NVME_SERIAL=$(cat /sys/class/nvme/nvme0/serial 2>/dev/null || echo "")
-            fi
-            if [ -z "$NVME_SERIAL" ]; then
-              NVME_SERIAL="not detected"
-            fi
+            # Import shared hardware detection functions
+            ${inputs.self.lib.hardwareDetectionScript pkgs}
             
-            # Detect MAC address
-            MAC_ADDRESS=""
-            if command -v ip >/dev/null 2>&1; then
-              MAC_ADDRESS=$(ip link show | awk '/ether/ {print $2; exit}' || echo "")
-            fi
-            if [ -z "$MAC_ADDRESS" ]; then
-              MAC_ADDRESS="not detected"
-            fi
+            # Use shared detection functions
+            NVME_SERIAL=$(detect_nvme_serial)
+            MAC_ADDRESS=$(detect_mac_address)
             
             echo "NVMe Serial: $NVME_SERIAL"
             echo "MAC Address: $MAC_ADDRESS"
