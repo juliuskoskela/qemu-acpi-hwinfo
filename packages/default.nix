@@ -314,9 +314,9 @@
                     exit 1
                   fi
                   
-                  ACPI_DEVICES=\$(show-acpi-hwinfo 2>/dev/null | wc -l)
-                  if [ \"\$ACPI_DEVICES\" -gt 0 ]; then
-                    echo \"✅ Found \$ACPI_DEVICES ACPI devices\"
+                  ACPI_DEVICES=\\\$(show-acpi-hwinfo 2>/dev/null | wc -l)
+                  if [ \"\\\$ACPI_DEVICES\" -gt 0 ]; then
+                    echo \"✅ Found \\\$ACPI_DEVICES ACPI devices\"
                     echo \"📋 Sample ACPI devices:\"
                     show-acpi-hwinfo | head -10
                   else
