@@ -1,12 +1,8 @@
 { inputs, ... }:
 {
-  perSystem = { config, self', inputs', pkgs, system, ... }: {
-    packages = {
-      default = self'.packages.hwinfo;
-      
-      hwinfo = self'.packages.generateHwInfo { };
-      
-      generateHwInfo = { nvmeSerial ? null, macAddress ? null }:
+  perSystem = { config, self', inputs', pkgs, system, ... }: 
+  let
+    generateHwInfo = { nvmeSerial ? null, macAddress ? null }:
         pkgs.stdenv.mkDerivation rec {
           pname = "qemu-acpi-hwinfo";
           version = "1.0.0";
@@ -119,6 +115,11 @@
             platforms = platforms.linux;
           };
         };
+  in {
+    packages = {
+      default = generateHwInfo { };
+      hwinfo = generateHwInfo { };
+      inherit generateHwInfo;
     };
   };
 }
