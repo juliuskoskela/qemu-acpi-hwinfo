@@ -90,13 +90,7 @@
             echo "MAC Address: $MAC_ADDRESS"
             echo
             echo "🛠️  Available commands:"
-            echo "   hwinfo-status         - Show detailed hwinfo status"
-            echo "   create-test-hwinfo    - Create test hwinfo files"
-            echo "   qemu-with-hwinfo      - Start QEMU with runtime hwinfo"
-            echo "   integration-test      - Run integration tests"
-            echo "   run-test-vm           - Build and run test VM"
-            echo "   run-test-vm-with-hwinfo - Run test VM with hardware info"
-            echo "   run-automated-vm-test - Run automated VM test (auto-exit)"
+            echo "   test-microvm-with-hwinfo - Complete MicroVM test (working)"
             echo "   run-test-microvm      - Run MicroVM with ACPI hwinfo (sudo)"
             echo
             echo "💡 For NixOS systems, enable the acpi-hwinfo module:"
@@ -152,12 +146,20 @@
           '';
         }
         {
+          name = "test-microvm-with-hwinfo";
+          help = "Complete MicroVM test (working)";
+          command = ''
+            echo "🧪 Running complete MicroVM test..."
+            nix --extra-experimental-features "nix-command flakes" run .#test-microvm-with-hwinfo
+          '';
+        }
+        {
           name = "run-test-microvm";
           help = "Run MicroVM with ACPI hardware info (requires sudo)";
           command = ''
             echo "🚀 Running MicroVM with ACPI hardware info..."
             echo "⚠️  This command requires sudo privileges"
-            sudo nix --extra-experimental-features "nix-command flakes" run .#run-test-microvm
+            sudo env PATH="$PATH" nix --extra-experimental-features "nix-command flakes" run .#run-test-microvm
           '';
         }
       ];
