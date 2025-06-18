@@ -10,66 +10,82 @@ If you have Nix with flakes enabled:
 # Enter development environment with all dependencies
 nix develop
 
-# Check hardware info status (detects current machine + shows runtime status)
-acpi-hwinfo
+# Check hardware info status
+nix run .#hwinfo-status
 
-# Create test hardware info files for development
-create-test-hwinfo
+# Generate hardware info
+nix run .#acpi-hwinfo-generate
 
-# Start QEMU with hardware info (requires NixOS module or test files)
-qemu-with-hwinfo disk.qcow2
+# Show current hardware info
+nix run .#acpi-hwinfo-show
+
+# Start QEMU with hardware info
+nix run .#qemu-with-hwinfo -- disk.qcow2
 ```
 
-## Development Commands
+## NixOS Modules
 
-The Nix devshell provides these convenience commands:
+This flake provides two NixOS modules:
 
-- **`acpi-hwinfo`** - Show hardware detection and runtime status
-- **`create-test-hwinfo`** - Create test hardware info files
-- **`qemu-with-hwinfo`** - Start QEMU with runtime hardware info
-- **`menu`** - Show available commands
+### Host Module (`acpi-hwinfo-host`)
 
-## Runtime Architecture
-
-The new architecture generates hardware info at **runtime** rather than build time:
-
-1. **NixOS Module**: Detects hardware at boot and saves to `/var/lib/acpi-hwinfo/`
-2. **QEMU Integration**: Reads from the runtime location when starting VMs
-3. **Development Tools**: Create test files and utilities for development
-
-## NixOS Configuration
-
-To enable automatic hardware info generation on NixOS systems:
+For the host system that generates hardware info:
 
 ```nix
 {
-  # Import the module
-  imports = [ ./path/to/qemu-acpi-hwinfo ];
+  imports = [ inputs.qemu-acpi-hwinfo.nixosModules.acpi-hwinfo-host ];
   
-  # Enable the service
   services.acpi-hwinfo = {
     enable = true;
-    # Optional: override detected values
+    generateOnBoot = true;  # Generate hardware info at boot
+    # Optional overrides:
     # nvmeSerial = "custom-serial";
     # macAddress = "00:11:22:33:44:55";
   };
 }
 ```
 
-This will:
-- Create `/var/lib/acpi-hwinfo/` directory
-- Generate hardware info at boot time
-- Provide `acpi-hwinfo-generate` and `acpi-hwinfo-show` commands
+### Guest Module (`acpi-hwinfo-guest`)
+
+For VMs that need to read hardware info:
+
+```nix
+{
+  imports = [ inputs.qemu-acpi-hwinfo.nixosModules.acpi-hwinfo-guest ];
+  
+  virtualisation.acpi-hwinfo = {
+    enable = true;
+    enableMicrovm = true;  # For MicroVM integration
+    hostHwinfoPath = "/var/lib/acpi-hwinfo/hwinfo.aml";
+    guestTools = true;     # Install guest reading tools
+  };
+}
+```
 
 ## Architecture
 
-The project uses a modular Nix structure with flake-parts:
+The project uses a clean modular structure:
 
-- **`nix/packages.nix`** - Package definitions for generating ACPI hardware info
-- **`nix/devshell.nix`** - Development shell with convenience commands
-- **`nix/formatter.nix`** - Code formatting configuration
-- **`nix/nixos-modules.nix`** - NixOS modules for host and guest systems
-- **`nix/lib.nix`** - Library functions for creating VMs
+```
+├── modules/           # NixOS modules
+│   ├── host.nix      # Host-side hardware detection
+│   ├── guest.nix     # Guest-side VM configuration
+│   └── default.nix   # Module exports
+├── packages/          # Nix packages
+│   └── default.nix   # Package definitions
+├── scripts/           # Shell scripts
+│   ├── acpi-hwinfo-generate.sh
+│   ├── acpi-hwinfo-show.sh
+│   ├── hwinfo-status.sh
+│   └── qemu-with-hwinfo.sh
+├── nix/              # Development tooling
+│   ├── devshell.nix  # Development environment
+│   ├── formatter.nix # Code formatting
+│   └── lib.nix       # Helper functions
+└── examples/         # Example configurations
+    ├── example-vm.nix
+    └── microvm.nix
+```
 
 ## Traditional Usage (without Nix)
 

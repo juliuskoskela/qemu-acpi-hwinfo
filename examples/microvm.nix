@@ -5,15 +5,20 @@ let
   system = "x86_64-linux";
   pkgs = nixpkgs.legacyPackages.${system};
 in
+{
+  imports = [
+    microvm.nixosModules.microvm
+    self.nixosModules.acpi-hwinfo-guest
+  ];
 
-self.lib.mkMicroVMWithHwInfo {
-  inherit system;
+  # Enable ACPI hardware info for MicroVM
+  virtualisation.acpi-hwinfo = {
+    enable = true;
+    enableMicrovm = true;
+    hostHwinfoPath = "/var/lib/acpi-hwinfo/hwinfo.aml";
+  };
 
-  # Optional: Override hardware info
-  # nvmeSerial = "CUSTOM_NVME_SERIAL";
-  # macAddress = "00:11:22:33:44:55";
-
-  # Additional VM configuration
+  # MicroVM configuration
   microvm = {
     vcpu = 4;
     mem = 4096;
@@ -31,9 +36,20 @@ self.lib.mkMicroVMWithHwInfo {
       id = "vm-net";
       mac = "02:00:00:00:00:01";
     }];
+
+    # Share the Nix store
+    shares = [{
+      source = "/nix/store";
+      mountPoint = "/nix/.ro-store";
+      tag = "ro-store";
+      proto = "virtiofs";
+    }];
   };
 
-  # Additional system configuration
+  # System configuration
+  system.stateVersion = "24.05";
+
+  # Services
   services = {
     openssh = {
       enable = true;

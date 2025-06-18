@@ -30,10 +30,10 @@
       systems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
 
       imports = [
-        ./nix/packages.nix
+        ./packages/default.nix
+        ./modules/default.nix
         ./nix/devshell.nix
         ./nix/formatter.nix
-        ./nix/nixos-modules.nix
         ./nix/lib.nix
       ];
     };

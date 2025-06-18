@@ -4,23 +4,19 @@
 let
   system = "x86_64-linux";
   pkgs = nixpkgs.legacyPackages.${system};
-
-  # Generate hardware info with custom values
-  hwinfo = self.lib.generateHwInfo {
-    inherit system;
-    nvmeSerial = "EXAMPLE_NVME_SERIAL_123";
-    macAddress = "00:11:22:33:44:55";
-  };
-
 in
 {
   imports = [
     microvm.nixosModules.microvm
-    self.nixosModules.guest
+    self.nixosModules.acpi-hwinfo-guest
   ];
 
   # Enable the guest hardware info reader
-  services.acpi-hwinfo-guest.enable = true;
+  virtualisation.acpi-hwinfo = {
+    enable = true;
+    enableMicrovm = true;
+    hostHwinfoPath = "/var/lib/acpi-hwinfo/hwinfo.aml";
+  };
 
   # MicroVM configuration
   microvm = {
@@ -44,12 +40,7 @@ in
     }];
 
     # QEMU-specific configuration with ACPI table
-    qemu = {
-      extraArgs = [
-        "-acpitable"
-        "file=${hwinfo}/hwinfo.aml"
-      ];
-    };
+    # (automatically configured by acpi-hwinfo-guest module)
   };
 
   # System configuration
