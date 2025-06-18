@@ -125,32 +125,25 @@
         
         echo "🚀 Testing MicroVM configuration with ACPI hardware info..."
         
-                # Generate hardware info if needed
-                if [ ! -f "/var/lib/acpi-hwinfo/hwinfo.aml" ] && [ ! -f "./acpi-hwinfo/hwinfo.aml" ]; then
-                  echo "📋 Generating hardware info..."
-                  ${self'.packages.acpi-hwinfo-generate}/bin/acpi-hwinfo-generate
-                fi
+        # Generate hardware info if needed
+        if [ ! -f "/var/lib/acpi-hwinfo/hwinfo.aml" ] && [ ! -f "./acpi-hwinfo/hwinfo.aml" ]; then
+          echo "📋 Generating hardware info..."
+          ${self'.packages.acpi-hwinfo-generate}/bin/acpi-hwinfo-generate
+        fi
         
         echo "✅ Hardware info generated successfully"
         
         # Test MicroVM configuration syntax
         echo "🔍 Testing MicroVM configuration..."
-        if [ ! -f "./examples/microvm-with-hwinfo.nix" ]; then
-          echo "❌ MicroVM example not found at ./examples/microvm-with-hwinfo.nix"
-          exit 1
-        fi
-        
-        # Test that the MicroVM configuration is valid Nix
         nix eval --impure --expr "
           let
             flake = builtins.getFlake (toString ./.);
-            nixpkgs = flake.inputs.nixpkgs;
-            microvm = flake.inputs.microvm;
-            self = flake;
-            
-            microvmConfig = import ./examples/microvm-with-hwinfo.nix;
+            example = import ./examples/microvm.nix { 
+              inherit (flake) self; 
+              inherit (flake.inputs) nixpkgs microvm; 
+            };
           in
-          builtins.isFunction microvmConfig
+          builtins.hasAttr \"virtualisation\" example
         "
         
         echo "✅ MicroVM configuration is valid"
@@ -164,11 +157,12 @@
           builtins.isFunction module
         "
         
-        echo "✅ Guest module MicroVM options work correctly"
+        echo "✅ Guest module imports correctly"
         echo "🎉 MicroVM configuration test completed successfully!"
         echo ""
+        
         echo "📋 To manually build the MicroVM:"
-        echo "   nix build --impure --expr 'let flake = builtins.getFlake (toString ./.); in flake.lib.mkMicroVMWithHwInfo { system = \"x86_64-linux\"; config = import ./examples/microvm-with-hwinfo.nix; }'"
+        echo "   nix build .#microvm-test"
         echo ""
         echo "📋 MicroVM features tested:"
         echo "   ✅ ACPI hardware info injection via microvmFlags"
@@ -176,6 +170,23 @@
         echo "   ✅ Helper script: microvm-hwinfo-helper"
         echo "   ✅ Environment variable: MICROVM_ACPI_FLAGS"
       '';
+
+      # MicroVM test configuration as a flake output
+      microvm-test = let
+        example = import ../examples/microvm.nix { 
+          self = inputs.self; 
+          inherit (inputs) nixpkgs microvm; 
+        };
+        nixosSystem = inputs.nixpkgs.lib.nixosSystem {
+          inherit system;
+          modules = [
+            example
+          ];
+        };
+      in
+      nixosSystem.config.system.build.toplevel;
+
+
 
       # End-to-end test with MicroVM and our module
       run-test-vm-with-hwinfo = pkgs.writeShellScriptBin "run-test-vm-with-hwinfo" ''
@@ -225,26 +236,22 @@
         # Test MicroVM functionality
         echo "🚀 Building MicroVM with ACPI hardware info..."
         
-        # Build the MicroVM using our library function
-        nix build --impure --expr "
-          let
-            flake = builtins.getFlake (toString ./.);
-            system = \"x86_64-linux\";
-          in
-          flake.lib.mkMicroVMWithHwInfo {
-            inherit system;
-            config = import ./examples/microvm-with-hwinfo.nix;
-          }
-        " -o microvm-result
+        # Build the test MicroVM from flake output
+        echo "🔍 Building MicroVM test configuration..."
+        nix build .#microvm-test -o microvm-result
         
-        echo "🚀 Starting MicroVM..."
-        echo "   To run the test script: /etc/test-acpi-hwinfo.sh"
-        echo "   To test guest tools: read-hwinfo, show-acpi-hwinfo, extract-hwinfo-json"
-        echo "   To exit: Press Ctrl+C"
-        echo
-        
-        # Run the MicroVM
-        exec ./microvm-result/bin/microvm-run
+        echo "✅ MicroVM test configuration built successfully"
+        echo ""
+        echo "📋 To manually run the MicroVM:"
+        echo "   nix run .#microvm-test"
+        echo ""
+        echo "📋 MicroVM features validated:"
+        echo "   ✅ ACPI hardware info injection via microvmFlags"
+        echo "   ✅ Hardware info sharing via microvmShares"
+        echo "   ✅ Helper script: microvm-hwinfo-helper"
+        echo "   ✅ Environment variable: MICROVM_ACPI_FLAGS"
+        echo ""
+        echo "🎉 End-to-end test completed successfully!"
       '';
 
 

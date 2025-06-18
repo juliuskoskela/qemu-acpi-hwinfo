@@ -1,9 +1,6 @@
 # Example MicroVM configuration with ACPI hardware info
 { config, pkgs, ... }:
 {
-  imports = [
-    ../modules/guest.nix
-  ];
 
   # MicroVM configuration for testing
   microvm = {

@@ -140,14 +140,14 @@
             cp hwinfo.aml $out
           '';
         in
-        inputs.microvm.lib.buildMicroVM {
-          inherit pkgs;
-          config = {
-            imports = [
-              inputs.self.nixosModules.acpi-hwinfo
-              inputs.self.nixosModules.guest
-              config
-            ];
+        inputs.nixpkgs.lib.nixosSystem {
+          inherit system;
+          modules = [
+            inputs.microvm.nixosModules.microvm
+            inputs.self.nixosModules.acpi-hwinfo
+            inputs.self.nixosModules.acpi-hwinfo-guest
+            config
+            {
 
             # Enable ACPI hardware info services
             services.acpi-hwinfo = {
@@ -185,7 +185,8 @@
                 "file=${hwInfoAml}"
               ];
             };
-          };
+            }
+          ];
         };
 
 
