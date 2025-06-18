@@ -179,11 +179,12 @@ EOF
         
         # Create temporary NixOS VM configuration
         cat > test-nixos-vm.nix <<EOF
-{ config, pkgs, lib, ... }:
+{ config, pkgs, lib, modulesPath, ... }:
 
 {
   imports = [
     ./modules/guest.nix
+    "\''${modulesPath}/virtualisation/qemu-vm.nix"
   ];
 
   # Enable ACPI hardware info
@@ -197,7 +198,6 @@ EOF
     memorySize = 1024;
     qemu.options = [
       "-nographic"
-      "-serial" "stdio"
       "-smp" "2"
     ];
   };
