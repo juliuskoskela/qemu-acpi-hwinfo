@@ -1,16 +1,42 @@
 # Nix build results
 result
 result-*
+*-result
+*-result-*
 
 # Generated ACPI files
 *.aml
-hwinfo.asl
+*.asl
 hwinfo.json
+test-hwinfo.*
 
 # VM disk images
 *.qcow2
 *.img
+*.iso
+
+# Test files and temporary configurations
+test-*
+*-test.*
+test-nixos-vm.nix
 
 # Temporary files
 *.tmp
 *.log
+*.bak
+*.swp
+*.swo
+*~
+
+# Runtime directories
+/var/lib/acpi-hwinfo/
+.acpi-hwinfo/
+
+# Editor files
+.vscode/
+.idea/
+*.sublime-*
+
+# OS files
+.DS_Store
+Thumbs.db
