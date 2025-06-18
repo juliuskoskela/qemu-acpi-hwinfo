@@ -2,11 +2,95 @@
 {
   flake = {
     nixosModules = {
-      # Host module for generating and providing hwinfo to VMs
+      # Host module for generating hardware info at runtime
       acpi-hwinfo = { config, lib, pkgs, ... }:
         with lib;
         let
           cfg = config.services.acpi-hwinfo;
+          
+          # Script to detect and generate hardware info at runtime
+          hwinfo-generator = pkgs.writeShellScript "hwinfo-generator" ''
+            set -euo pipefail
+            
+            HWINFO_DIR="/var/lib/acpi-hwinfo"
+            mkdir -p "$HWINFO_DIR"
+            
+            echo "Detecting hardware information..."
+            
+            # Detect NVMe serial
+            NVME_SERIAL="${cfg.nvmeSerial or ""}"
+            if [ -z "$NVME_SERIAL" ]; then
+              if command -v nvme >/dev/null 2>&1; then
+                NVME_SERIAL=$(nvme list 2>/dev/null | awk 'NR>1 {print $2; exit}' || echo "")
+              fi
+              if [ -z "$NVME_SERIAL" ] && [ -f /sys/class/nvme/nvme0/serial ]; then
+                NVME_SERIAL=$(cat /sys/class/nvme/nvme0/serial 2>/dev/null || echo "")
+              fi
+              if [ -z "$NVME_SERIAL" ]; then
+                NVME_SERIAL="no-nvme-detected"
+              fi
+            fi
+            
+            # Detect MAC address
+            MAC_ADDRESS="${cfg.macAddress or ""}"
+            if [ -z "$MAC_ADDRESS" ]; then
+              if command -v ip >/dev/null 2>&1; then
+                MAC_ADDRESS=$(ip link show | awk '/ether/ {print $2; exit}' || echo "")
+              fi
+              if [ -z "$MAC_ADDRESS" ]; then
+                MAC_ADDRESS="00:00:00:00:00:00"
+              fi
+            fi
+            
+            echo "Using NVMe Serial: $NVME_SERIAL"
+            echo "Using MAC Address: $MAC_ADDRESS"
+            
+            # Generate JSON file
+            cat > "$HWINFO_DIR/hwinfo.json" <<EOF
+{
+  "nvme_serial": "$NVME_SERIAL",
+  "mac_address": "$MAC_ADDRESS",
+  "generated": "$(date -Iseconds)"
+}
+EOF
+            
+            # Generate ASL file
+            cat > "$HWINFO_DIR/hwinfo.asl" <<EOF
+DefinitionBlock ("hwinfo.aml", "SSDT", 2, "HWINFO", "HWINFO", 0x00000001)
+{
+    Scope (\_SB)
+    {
+        Device (HWIN)
+        {
+            Name (_HID, "ACPI0001")
+            Name (_STA, 0x0F)
+            Method (GHWI, 0, NotSerialized)
+            {
+                Return (Package (0x02)
+                {
+                    "$NVME_SERIAL",
+                    "$MAC_ADDRESS"
+                })
+            }
+        }
+    }
+}
+EOF
+            
+            # Compile ASL to AML
+            if command -v iasl >/dev/null 2>&1; then
+              cd "$HWINFO_DIR"
+              iasl hwinfo.asl
+              echo "Generated ACPI files in $HWINFO_DIR"
+            else
+              echo "Warning: iasl not available, only ASL file generated"
+            fi
+            
+            # Set permissions
+            chmod 644 "$HWINFO_DIR"/* 2>/dev/null || true
+            
+            echo "Hardware info generation complete"
+          '';
         in
         {
           options.services.acpi-hwinfo = {
@@ -15,31 +99,72 @@
             nvmeSerial = mkOption {
               type = types.nullOr types.str;
               default = null;
-              description = "Override NVMe serial number";
+              description = "Override NVMe serial number (auto-detected if null)";
             };
 
             macAddress = mkOption {
               type = types.nullOr types.str;
               default = null;
-              description = "Override MAC address";
+              description = "Override MAC address (auto-detected if null)";
+            };
+
+            generateAtBoot = mkOption {
+              type = types.bool;
+              default = true;
+              description = "Generate hardware info at boot time";
             };
 
             hwinfoPath = mkOption {
-              type = types.path;
+              type = types.str;
+              default = "/var/lib/acpi-hwinfo/hwinfo.aml";
               readOnly = true;
-              description = "Path to the generated hwinfo.aml file";
+              description = "Path to the runtime-generated hwinfo.aml file";
             };
           };
 
           config = mkIf cfg.enable {
-            services.acpi-hwinfo.hwinfoPath =
-              let
-                hwinfo = inputs.self.packages.${pkgs.system}.generateHwInfo {
-                  nvmeSerial = cfg.nvmeSerial;
-                  macAddress = cfg.macAddress;
-                };
-              in
-              "${hwinfo}/hwinfo.aml";
+            environment.systemPackages = with pkgs; [
+              acpica-tools
+              nvme-cli
+              
+              # Convenience commands
+              (writeShellScriptBin "acpi-hwinfo-generate" ''
+                echo "Regenerating ACPI hardware info..."
+                sudo ${hwinfo-generator}
+              '')
+              
+              (writeShellScriptBin "acpi-hwinfo-show" ''
+                HWINFO_DIR="/var/lib/acpi-hwinfo"
+                if [ -f "$HWINFO_DIR/hwinfo.json" ]; then
+                  echo "Current hardware info:"
+                  ${jq}/bin/jq . "$HWINFO_DIR/hwinfo.json"
+                  echo
+                  echo "Files available:"
+                  ls -la "$HWINFO_DIR/"
+                else
+                  echo "No hardware info found. Run 'acpi-hwinfo-generate' first."
+                fi
+              '')
+            ];
+
+            # Create the hardware info directory
+            systemd.tmpfiles.rules = [
+              "d /var/lib/acpi-hwinfo 0755 root root -"
+            ];
+
+            # Systemd service to generate hardware info at boot
+            systemd.services.acpi-hwinfo-generator = mkIf cfg.generateAtBoot {
+              description = "Generate ACPI hardware info";
+              wantedBy = [ "multi-user.target" ];
+              after = [ "network.target" ];
+              serviceConfig = {
+                Type = "oneshot";
+                ExecStart = "${hwinfo-generator}";
+                RemainAfterExit = true;
+                StandardOutput = "journal";
+                StandardError = "journal";
+              };
+            };
           };
         };
 

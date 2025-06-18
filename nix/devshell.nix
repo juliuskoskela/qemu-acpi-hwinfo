@@ -40,69 +40,79 @@
       commands = [
         {
           name = "acpi-hwinfo";
-          help = "Read hardware info from the current development machine";
+          help = "Read hardware info and show runtime status";
           command = ''
-            echo "🔍 Reading hardware info from current machine..."
+            echo "🔍 ACPI Hardware Info Status"
+            echo "=========================="
             echo
             
-            # Try to read from generated hwinfo if available
-            if [ -f "./result/hwinfo.json" ]; then
-              echo "📄 Found generated hwinfo.json:"
-              ${pkgs.jq}/bin/jq . ./result/hwinfo.json
+            # Check runtime hwinfo
+            HWINFO_DIR="/var/lib/acpi-hwinfo"
+            if [ -d "$HWINFO_DIR" ]; then
+              echo "📁 Runtime hwinfo directory exists: $HWINFO_DIR"
+              if [ -f "$HWINFO_DIR/hwinfo.json" ]; then
+                echo "📄 Runtime hardware info:"
+                ${pkgs.jq}/bin/jq . "$HWINFO_DIR/hwinfo.json" 2>/dev/null || cat "$HWINFO_DIR/hwinfo.json"
+                echo
+              else
+                echo "❌ No runtime hwinfo.json found"
+              fi
+            else
+              echo "❌ Runtime hwinfo directory not found: $HWINFO_DIR"
+              echo "💡 Enable the acpi-hwinfo NixOS module to create it"
               echo
             fi
             
-            # Read current machine hardware info
-            echo "💻 Current machine hardware info:"
+            echo "💻 Current machine hardware detection:"
             echo
             
-            # NVMe Serial
-            echo -n "NVMe Serial: "
-            if command -v nvme >/dev/null 2>&1 && [ -e /dev/nvme0n1 ]; then
-              nvme id-ctrl /dev/nvme0n1 2>/dev/null | grep '^sn' | awk '{print $3}' || echo "UNKNOWN"
-            elif [ -f "/sys/class/nvme/nvme0/serial" ]; then
-              cat /sys/class/nvme/nvme0/serial 2>/dev/null || echo "UNKNOWN"
-            else
-              echo "UNKNOWN (no NVMe device found)"
+            # Detect NVMe serial
+            NVME_SERIAL=""
+            if command -v nvme >/dev/null 2>&1; then
+              NVME_SERIAL=$(nvme list 2>/dev/null | awk 'NR>1 {print $2; exit}' || echo "")
+            fi
+            if [ -z "$NVME_SERIAL" ] && [ -f /sys/class/nvme/nvme0/serial ]; then
+              NVME_SERIAL=$(cat /sys/class/nvme/nvme0/serial 2>/dev/null || echo "")
+            fi
+            if [ -z "$NVME_SERIAL" ]; then
+              NVME_SERIAL="not detected"
             fi
             
-            # MAC Address
-            echo -n "MAC Address: "
-            ip link show 2>/dev/null | grep -E "link/ether" | head -1 | awk '{print $2}' 2>/dev/null || echo "00:00:00:00:00:00"
+            # Detect MAC address
+            MAC_ADDRESS=""
+            if command -v ip >/dev/null 2>&1; then
+              MAC_ADDRESS=$(ip link show | awk '/ether/ {print $2; exit}' || echo "")
+            fi
+            if [ -z "$MAC_ADDRESS" ]; then
+              MAC_ADDRESS="not detected"
+            fi
             
+            echo "NVMe Serial: $NVME_SERIAL"
+            echo "MAC Address: $MAC_ADDRESS"
             echo
-            echo "💡 To generate hwinfo package with current values:"
-            echo "   nix build"
+            echo "🛠️  Available commands:"
+            echo "   hwinfo-status         - Show detailed hwinfo status"
+            echo "   create-test-hwinfo    - Create test hwinfo files"
+            echo "   qemu-with-hwinfo      - Start QEMU with runtime hwinfo"
             echo
-            echo "💡 To generate hwinfo with custom values:"
-            echo "   nix build .#packages.x86_64-linux.generateHwInfo --override-input nvmeSerial \"CUSTOM_SERIAL\""
+            echo "💡 For NixOS systems, enable the acpi-hwinfo module:"
+            echo "   services.acpi-hwinfo.enable = true;"
           '';
         }
         {
-          name = "build-hwinfo";
-          help = "Build hwinfo package for current machine";
+          name = "create-test-hwinfo";
+          help = "Create test hardware info files";
           command = ''
-            echo "🔨 Building hwinfo package..."
-            nix --extra-experimental-features "nix-command flakes" build .#hwinfo
-            echo "✅ Built hwinfo package at ./result"
-            echo
-            echo "📄 Generated files:"
-            ls -la ./result/
-            echo
-            if [ -f "./result/hwinfo.json" ]; then
-              echo "📋 Hardware info:"
-              ${pkgs.jq}/bin/jq . ./result/hwinfo.json
-            fi
+            echo "🧪 Creating test hardware info..."
+            nix --extra-experimental-features "nix-command flakes" run .#create-test-hwinfo
           '';
         }
         {
-          name = "test-vm";
-          help = "Test the hwinfo in a microVM";
+          name = "qemu-with-hwinfo";
+          help = "Start QEMU with runtime hardware info";
           command = ''
-            echo "🚀 Testing hwinfo in microVM..."
-            echo "This will build and run a test VM with the generated hwinfo"
-            echo "Note: MicroVM functionality requires additional setup"
-            echo "Use the example-vm.nix or microvm.nix files for VM configuration"
+            echo "🚀 Starting QEMU with runtime hardware info..."
+            nix --extra-experimental-features "nix-command flakes" run .#qemu-with-hwinfo -- "$@"
           '';
         }
       ];

@@ -10,24 +10,56 @@ If you have Nix with flakes enabled:
 # Enter development environment with all dependencies
 nix develop
 
-# Read current machine hardware info
+# Check hardware info status (detects current machine + shows runtime status)
 acpi-hwinfo
 
-# Build hwinfo package for current machine
-build-hwinfo
+# Create test hardware info files for development
+create-test-hwinfo
 
-# The generated files will be in ./result/
-ls -la ./result/
+# Start QEMU with hardware info (requires NixOS module or test files)
+qemu-with-hwinfo disk.qcow2
 ```
 
 ## Development Commands
 
 The Nix devshell provides these convenience commands:
 
-- **`acpi-hwinfo`** - Read hardware info from current machine
-- **`build-hwinfo`** - Build hwinfo package for current machine  
-- **`test-vm`** - Get guidance for testing in VMs
+- **`acpi-hwinfo`** - Show hardware detection and runtime status
+- **`create-test-hwinfo`** - Create test hardware info files
+- **`qemu-with-hwinfo`** - Start QEMU with runtime hardware info
 - **`menu`** - Show available commands
+
+## Runtime Architecture
+
+The new architecture generates hardware info at **runtime** rather than build time:
+
+1. **NixOS Module**: Detects hardware at boot and saves to `/var/lib/acpi-hwinfo/`
+2. **QEMU Integration**: Reads from the runtime location when starting VMs
+3. **Development Tools**: Create test files and utilities for development
+
+## NixOS Configuration
+
+To enable automatic hardware info generation on NixOS systems:
+
+```nix
+{
+  # Import the module
+  imports = [ ./path/to/qemu-acpi-hwinfo ];
+  
+  # Enable the service
+  services.acpi-hwinfo = {
+    enable = true;
+    # Optional: override detected values
+    # nvmeSerial = "custom-serial";
+    # macAddress = "00:11:22:33:44:55";
+  };
+}
+```
+
+This will:
+- Create `/var/lib/acpi-hwinfo/` directory
+- Generate hardware info at boot time
+- Provide `acpi-hwinfo-generate` and `acpi-hwinfo-show` commands
 
 ## Architecture
 
