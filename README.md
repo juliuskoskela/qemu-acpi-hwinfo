@@ -2,23 +2,98 @@
 
 A tool for embedding host hardware information into QEMU virtual machines via ACPI tables, allowing guests to access host hardware identifiers like NVMe serial numbers and MAC addresses.
 
-## Overview
+## Quick Start with Nix (Recommended)
 
-This project provides a way to pass hardware information from the host system to QEMU guests through ACPI SSDT tables. The hardware info becomes accessible within the guest OS through the ACPI interface.
+If you have Nix with flakes enabled:
 
-## Components
+```bash
+# Enter development environment with all dependencies
+nix develop
 
-- **qemu-acpi-hwinfo.sh** - Detects host hardware and generates ACPI SSDT table
-- **start-vm.sh** - Launches QEMU with the generated ACPI table
-- **guest-read-hwinfo.sh** - Reads hardware info from ACPI tables within the guest
+# Check hardware info status
+nix run .#hwinfo-status
 
-## Prerequisites
+# Generate hardware info
+nix run .#acpi-hwinfo-generate
+
+# Show current hardware info
+nix run .#acpi-hwinfo-show
+
+# Start QEMU with hardware info
+nix run .#qemu-with-hwinfo -- disk.qcow2
+```
+
+## NixOS Modules
+
+This flake provides two NixOS modules:
+
+### Host Module (`acpi-hwinfo-host`)
+
+For the host system that generates hardware info:
+
+```nix
+{
+  imports = [ inputs.qemu-acpi-hwinfo.nixosModules.acpi-hwinfo-host ];
+  
+  services.acpi-hwinfo = {
+    enable = true;
+    generateOnBoot = true;  # Generate hardware info at boot
+    # Optional overrides:
+    # nvmeSerial = "custom-serial";
+    # macAddress = "00:11:22:33:44:55";
+  };
+}
+```
+
+### Guest Module (`acpi-hwinfo-guest`)
+
+For VMs that need to read hardware info:
+
+```nix
+{
+  imports = [ inputs.qemu-acpi-hwinfo.nixosModules.acpi-hwinfo-guest ];
+  
+  virtualisation.acpi-hwinfo = {
+    enable = true;
+    enableMicrovm = true;  # For MicroVM integration
+    hostHwinfoPath = "/var/lib/acpi-hwinfo/hwinfo.aml";
+    guestTools = true;     # Install guest reading tools
+  };
+}
+```
+
+## Architecture
+
+The project uses a clean modular structure:
+
+```
+├── modules/           # NixOS modules
+│   ├── host.nix      # Host-side hardware detection
+│   ├── guest.nix     # Guest-side VM configuration
+│   └── default.nix   # Module exports
+├── packages/          # Nix packages
+│   └── default.nix   # Package definitions
+├── scripts/           # Shell scripts
+│   ├── acpi-hwinfo-generate.sh
+│   ├── acpi-hwinfo-show.sh
+│   ├── hwinfo-status.sh
+│   └── qemu-with-hwinfo.sh
+├── nix/              # Development tooling
+│   ├── devshell.nix  # Development environment
+│   ├── formatter.nix # Code formatting
+│   └── lib.nix       # Helper functions
+└── examples/         # Example configurations
+    ├── example-vm.nix
+    └── microvm.nix
+```
+
+## Traditional Usage (without Nix)
+
+### Prerequisites
 
 - `iasl` (Intel ACPI Source Language Compiler)
 - `qemu-system-x86_64`
-- Root/sudo access for reading certain hardware information
-
-### Installing Prerequisites
+- Root/sudo access for reading hardware information
 
 **Ubuntu/Debian:**
 ```bash
@@ -29,8 +104,6 @@ sudo apt install acpica-tools qemu-system-x86
 ```bash
 sudo dnf install acpica-tools qemu-system-x86
 ```
-
-## Usage
 
 ### 1. Generate ACPI Table
 
