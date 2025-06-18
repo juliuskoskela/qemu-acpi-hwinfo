@@ -171,8 +171,9 @@
         echo "   Use 'system_powerdown' in QEMU monitor to shutdown"
         echo
         
-        # Run the VM with our hardware info in headless mode
-        QEMU_OPTS="-nographic -serial mon:stdio" exec "$VM_IMAGE/bin/run-nixos-vm"
+        # Run the VM with our hardware info using qemu-with-hwinfo in headless mode
+        export QEMU_OPTS="-nographic -serial mon:stdio"
+        exec ${self'.packages.qemu-with-hwinfo}/bin/qemu-with-hwinfo "$VM_IMAGE/bin/run-nixos-vm"
       '';
 
       # Script to build VM and run with qemu-with-hwinfo
@@ -206,7 +207,8 @@
         echo
         
         # Run with our qemu wrapper in headless mode
-        QEMU_OPTS="-nographic -serial mon:stdio" exec "$VM_IMAGE/bin/run-nixos-vm"
+        export QEMU_OPTS="-nographic -serial mon:stdio"
+        exec ${self'.packages.qemu-with-hwinfo}/bin/qemu-with-hwinfo "$VM_IMAGE/bin/run-nixos-vm"
       '';
 
       # Automated test runner that runs the test and exits
@@ -234,8 +236,8 @@
         echo "   Timeout: 120 seconds"
         echo
         
-        # Run the VM with timeout for automated testing
-        timeout 120 env QEMU_OPTS="-nographic -serial mon:stdio" "$VM_IMAGE/bin/run-nixos-vm" || {
+        # Run the VM with timeout for automated testing using qemu-with-hwinfo
+        timeout 120 env QEMU_OPTS="-nographic -serial mon:stdio" ${self'.packages.qemu-with-hwinfo}/bin/qemu-with-hwinfo "$VM_IMAGE/bin/run-nixos-vm" || {
           exit_code=$?
           if [ $exit_code -eq 124 ]; then
             echo "⏰ VM test timed out after 120 seconds"
