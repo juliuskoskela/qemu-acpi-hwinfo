@@ -30,7 +30,27 @@ sudo apt install acpica-tools qemu-system-x86
 sudo dnf install acpica-tools qemu-system-x86
 ```
 
-## Usage
+## Quick Start with Nix (Recommended)
+
+If you have Nix with flakes enabled:
+
+```bash
+# Enter development environment
+nix develop
+
+# Read current machine hardware info
+acpi-hwinfo
+
+# Build hwinfo package for current machine
+build-hwinfo
+
+# The generated files will be in ./result/
+ls -la ./result/
+```
+
+The Nix-based workflow provides a complete development environment with all dependencies and convenience commands. See [`nix/README.md`](nix/README.md) for detailed information about the modular Nix structure.
+
+## Traditional Usage
 
 ### 1. Generate ACPI Table
 
