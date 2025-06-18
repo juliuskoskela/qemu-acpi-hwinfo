@@ -235,6 +235,234 @@
             echo -e "''${GREEN}✅ MicroVM test completed successfully!''${NC}"
           '';
 
+          # MicroVM test configuration - actual working MicroVM
+          test-microvm = let
+            microvmSystem = nixpkgs.lib.nixosSystem {
+              system = "x86_64-linux";
+              modules = [
+                inputs.microvm.nixosModules.microvm
+                ./modules
+                ({ pkgs, ... }: {
+                  # Enable the ACPI hardware info guest module
+                  acpi-hwinfo.guest.enable = true;
+
+                  # MicroVM configuration
+                  microvm = {
+                    vcpu = 2;
+                    mem = 1024;
+                    hypervisor = "qemu";
+
+                    # Network configuration
+                    interfaces = [{
+                      type = "user";
+                      id = "vm-net";
+                      mac = "02:00:00:00:00:01";
+                    }];
+
+                    # Share the Nix store
+                    shares = [{
+                      source = "/nix/store";
+                      mountPoint = "/nix/.ro-store";
+                      tag = "ro-store";
+                      proto = "virtiofs";
+                    }];
+
+                    # Add ACPI table with hardware info
+                    qemu.extraArgs = [
+                      "-acpitable" "file=/var/lib/acpi-hwinfo/hwinfo.aml"
+                    ];
+                  };
+
+                  # System configuration
+                  system.stateVersion = "24.05";
+
+                  # Auto-login for testing
+                  services.getty.autologinUser = "root";
+
+                  # Test packages
+                  environment.systemPackages = with pkgs; [
+                    jq
+                    acpica-tools
+                    vim
+                    htop
+                  ];
+
+                  # Create a test script that can be run in the VM
+                  environment.etc."test-acpi-hwinfo.sh" = {
+                    mode = "0755";
+                    text = ''
+                      #!/bin/bash
+                      set -euo pipefail
+                      
+                      echo "🧪 ACPI Hardware Info Test"
+                      echo "=========================="
+                      echo
+                      
+                      # Test 1: Check if ACPI device exists
+                      echo "📱 Test 1: ACPI Device Check"
+                      if [ -d "/sys/bus/acpi/devices/ACPI0001:00" ]; then
+                        echo "✅ ACPI device ACPI0001:00 found"
+                        echo "   HID: $(cat /sys/bus/acpi/devices/ACPI0001:00/hid 2>/dev/null || echo 'N/A')"
+                      else
+                        echo "❌ ACPI device ACPI0001:00 not found"
+                        echo "💡 Available ACPI devices:"
+                        ls -la /sys/bus/acpi/devices/ | head -10
+                        return 1
+                      fi
+                      echo
+                      
+                      # Test 2: Check command availability
+                      echo "🔧 Test 2: Command Availability"
+                      for cmd in read-hwinfo show-acpi-hwinfo extract-hwinfo-json; do
+                        if command -v "$cmd" >/dev/null 2>&1; then
+                          echo "✅ $cmd available"
+                        else
+                          echo "❌ $cmd not available"
+                          return 1
+                        fi
+                      done
+                      echo
+                      
+                      # Test 3: Read hardware info
+                      echo "📋 Test 3: Hardware Info Reading"
+                      if read-hwinfo; then
+                        echo "✅ Hardware info read successfully"
+                      else
+                        echo "❌ Failed to read hardware info"
+                        return 1
+                      fi
+                      echo
+                      
+                      # Test 4: Check ACPI tables
+                      echo "🔍 Test 4: ACPI Tables Verification"
+                      echo "Available ACPI tables:"
+                      ls -la /sys/firmware/acpi/tables/
+                      echo
+                      echo "Searching for hardware info in SSDT tables:"
+                      for ssdt in /sys/firmware/acpi/tables/SSDT*; do
+                        if [ -f "$ssdt" ]; then
+                          echo "=== $(basename $ssdt) ==="
+                          strings "$ssdt" 2>/dev/null | grep -A 3 -B 1 "NVME_SERIAL\|MAC_ADDRESS" || echo "No hardware info found"
+                        fi
+                      done
+                      
+                      echo
+                      echo "🎉 All tests passed!"
+                    '';
+                  };
+
+                  # Auto-run test on boot for automated testing
+                  systemd.services.acpi-hwinfo-auto-test = {
+                    description = "Auto-run ACPI hardware info test";
+                    wantedBy = [ "multi-user.target" ];
+                    after = [ "multi-user.target" ];
+                    serviceConfig = {
+                      Type = "oneshot";
+                      ExecStart = pkgs.writeShellScript "auto-test" ''
+                        echo "🧪 Running automated ACPI hardware info test..."
+                        sleep 5  # Give system time to fully boot
+                        if /etc/test-acpi-hwinfo.sh; then
+                          echo "✅ Automated test passed!"
+                          echo "🔌 Shutting down VM in 3 seconds..."
+                          sleep 3
+                          systemctl poweroff
+                        else
+                          echo "❌ Automated test failed!"
+                          sleep 2
+                          systemctl poweroff
+                          exit 1
+                        fi
+                      '';
+                    };
+
+                    # Environment variable to enable auto-test
+                    environment.ACPI_HWINFO_AUTO_TEST = "1";
+                  };
+                })
+              ];
+            };
+          in
+          microvmSystem.config.microvm.runner.qemu;
+
+          # Script to build and run the test MicroVM
+          run-test-microvm = pkgs.writeShellScriptBin "run-test-microvm" ''
+            set -euo pipefail
+            
+            echo "🔨 Building test MicroVM..."
+            MICROVM=$(nix --extra-experimental-features "nix-command flakes" build --no-link --print-out-paths .#test-microvm)
+            
+            echo "✅ MicroVM built: $MICROVM"
+            echo
+            
+            # Ensure we have test hardware info
+            if [ ! -f "/var/lib/acpi-hwinfo/hwinfo.aml" ]; then
+              echo "📝 Creating test hardware info..."
+              sudo mkdir -p /var/lib/acpi-hwinfo
+              
+              # Generate test hardware info
+              NVME_SERIAL="MICROVM_TEST_SERIAL_123"
+              MAC_ADDRESS="02:03:04:05:06:07"
+              
+              # Create JSON metadata
+              sudo tee /var/lib/acpi-hwinfo/hwinfo.json > /dev/null <<EOF
+{
+  "nvme_serial": "$NVME_SERIAL",
+  "mac_address": "$MAC_ADDRESS",
+  "generated": "$(date -Iseconds)"
+}
+EOF
+              
+              # Create ASL file
+              sudo tee /var/lib/acpi-hwinfo/hwinfo.asl > /dev/null <<EOF
+DefinitionBlock ("hwinfo.aml", "SSDT", 2, "HWINFO", "HWINFO", 0x00000001)
+{
+    Scope (\_SB)
+    {
+        Device (HWIN)
+        {
+            Name (_HID, "ACPI0001")
+            Name (_UID, 0x00)
+            Name (_STR, Unicode ("Hardware Info Device"))
+            
+            Method (GHWI, 0, NotSerialized)
+            {
+                Return (Package (0x04)
+                {
+                    "NVME_SERIAL", 
+                    "$NVME_SERIAL", 
+                    "MAC_ADDRESS", 
+                    "$MAC_ADDRESS"
+                })
+            }
+            
+            Method (_STA, 0, NotSerialized)
+            {
+                Return (0x0F)
+            }
+        }
+    }
+}
+EOF
+              
+              # Compile ASL to AML
+              echo "🔧 Compiling ASL to AML..."
+              (cd /var/lib/acpi-hwinfo && sudo ${pkgs.acpica-tools}/bin/iasl hwinfo.asl >/dev/null 2>&1)
+            fi
+            
+            echo "📋 Using hardware info:"
+            cat /var/lib/acpi-hwinfo/hwinfo.json
+            echo
+            
+            echo "🚀 Starting test MicroVM with ACPI hardware info..."
+            echo "   MicroVM will auto-login as root"
+            echo "   Run '/etc/test-acpi-hwinfo.sh' inside VM to test"
+            echo "   Use Ctrl+C to shutdown"
+            echo
+            
+            # Run the MicroVM
+            exec "$MICROVM/bin/microvm-run"
+          '';
+
         };
 
         # Enhanced dev shell with test scripts
@@ -258,6 +486,7 @@
             echo "🚀 QEMU ACPI Hardware Info Development Environment"
             echo "Available test commands:"
             echo "  nix run .#test-microvm-with-hwinfo  - Run comprehensive MicroVM test"
+            echo "  nix run .#run-test-microvm          - Run actual MicroVM with ACPI hwinfo"
             echo "  nix run .#generate-hwinfo           - Generate hardware info ACPI table"
             echo "  nix run .#read-hwinfo               - Read hardware info from ACPI"
             echo ""
@@ -265,7 +494,8 @@
             echo "  iasl, nvme, qemu-system-x86_64"
             echo ""
             echo "Quick start:"
-            echo "  nix run .#test-microvm-with-hwinfo"
+            echo "  nix run .#test-microvm-with-hwinfo  (test only)"
+            echo "  sudo nix run .#run-test-microvm     (actual MicroVM)"
           '';
         };
       };
