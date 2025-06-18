@@ -12,7 +12,10 @@
   outputs = { self, nixpkgs, microvm }:
     let
       system = "x86_64-linux";
-      pkgs = nixpkgs.legacyPackages.${system};
+      pkgs = import nixpkgs {
+        inherit system;
+        overlays = [ microvm.overlay ];
+      };
       
       # Generate ACPI table with hardware info
       hwinfo-aml = pkgs.runCommand "hwinfo.aml" {
@@ -73,9 +76,13 @@
       # NixOS configuration for MicroVM with hardware info
       nixosConfigurations.microvm-hwinfo = nixpkgs.lib.nixosSystem {
         inherit system;
+        inherit pkgs;
         modules = [
           microvm.nixosModules.microvm
           {
+            # Fix for hostPackages missing error
+            nixpkgs.hostPlatform = system;
+            nixpkgs.buildPlatform = system;
             # Basic system configuration
             networking.hostName = "microvm-hwinfo";
             users.users.root.password = "";
@@ -95,14 +102,6 @@
                 mac = "02:00:00:00:00:01";
               }];
 
-              # Share the Nix store
-              shares = [{
-                source = "/nix/store";
-                mountPoint = "/nix/.ro-store";
-                tag = "ro-store";
-                proto = "virtiofs";
-              }];
-              
               # Inject ACPI hardware info
               qemu.extraArgs = [
                 "-acpitable"
@@ -170,14 +169,31 @@
       apps.${system} = {
         microvm-run = {
           type = "app";
-          program = "${self.nixosConfigurations.microvm-hwinfo.config.microvm.declaredRunner}/bin/microvm-run";
+          program = "${self.packages.${system}.microvm-hwinfo}/bin/microvm-run";
         };
       };
 
       # Packages
       packages.${system} = {
-        # MicroVM runner package
-        microvm-hwinfo = self.nixosConfigurations.microvm-hwinfo.config.microvm.declaredRunner;
+        # MicroVM runner package - simplified approach
+        microvm-hwinfo = pkgs.writeShellScriptBin "microvm-run" ''
+          set -euo pipefail
+          echo "🚀 Starting MicroVM with Hardware Info..."
+          echo "📋 ACPI table: ${hwinfo-aml}"
+          
+          # Create a simple QEMU command
+          exec ${pkgs.qemu}/bin/qemu-system-x86_64 \
+            -enable-kvm \
+            -m 1024 \
+            -smp 2 \
+            -nographic \
+            -kernel ${self.nixosConfigurations.microvm-hwinfo.config.system.build.kernel}/bzImage \
+            -initrd ${self.nixosConfigurations.microvm-hwinfo.config.system.build.initialRamdisk}/initrd \
+            -append "console=ttyS0 init=${self.nixosConfigurations.microvm-hwinfo.config.system.build.toplevel}/init" \
+            -acpitable file=${hwinfo-aml} \
+            -netdev user,id=net0 \
+            -device virtio-net-pci,netdev=net0,mac=02:00:00:00:00:01
+        '';
         
         # ACPI table with hardware info
         inherit hwinfo-aml;
