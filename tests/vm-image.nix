@@ -241,8 +241,8 @@
         echo "   Timeout: 120 seconds"
         echo
         
-        # Run the VM with timeout for automated testing using qemu-with-hwinfo
-        timeout 120 env QEMU_OPTS="-nographic -serial mon:stdio" ${self'.packages.qemu-with-hwinfo}/bin/qemu-with-hwinfo "$VM_IMAGE/bin/run-nixos-vm" || {
+        # Run the VM with timeout for automated testing using the VM runner
+        timeout 120 env QEMU_OPTS="-nographic -serial mon:stdio" "$VM_IMAGE/bin/run-nixos-vm" || {
           exit_code=$?
           if [ $exit_code -eq 124 ]; then
             echo "⏰ VM test timed out after 120 seconds"
