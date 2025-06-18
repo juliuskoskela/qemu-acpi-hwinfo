@@ -1,4 +1,4 @@
-{ config, lib, pkgs, ... }:
+{ config, lib, pkgs, inputs, ... }:
 
 with lib;
 
@@ -76,48 +76,19 @@ in
           
           echo "Detecting hardware information..."
           
+          # Import shared hardware detection functions
+          ${inputs.self.lib.hardwareDetectionScript pkgs}
+          
           # Detect NVMe serial
           NVME_SERIAL="${cfg.nvmeSerial or ""}"
           if [ -z "$NVME_SERIAL" ]; then
-            if command -v nvme >/dev/null 2>&1; then
-              # Try nvme id-ctrl method first (more reliable)
-              for nvme_dev in /dev/nvme*n1; do
-                if [ -e "$nvme_dev" ]; then
-                  NVME_SERIAL=$(nvme id-ctrl "$nvme_dev" 2>/dev/null | grep '^sn' | awk '{print $3}' || echo "")
-                  if [ -n "$NVME_SERIAL" ] && [ "$NVME_SERIAL" != "---------------------" ]; then
-                    break
-                  fi
-                fi
-              done
-              
-              # Fallback to nvme list if id-ctrl didn't work
-              if [ -z "$NVME_SERIAL" ] || [ "$NVME_SERIAL" = "---------------------" ]; then
-                NVME_SERIAL=$(nvme list 2>/dev/null | awk 'NR>1 && $2 != "---------------------" {print $2; exit}' || echo "")
-              fi
-            fi
-            
-            # Fallback to sysfs
-            if [ -z "$NVME_SERIAL" ] || [ "$NVME_SERIAL" = "---------------------" ]; then
-              if [ -f /sys/class/nvme/nvme0/serial ]; then
-                NVME_SERIAL=$(cat /sys/class/nvme/nvme0/serial 2>/dev/null || echo "")
-              fi
-            fi
-            
-            # Final fallback
-            if [ -z "$NVME_SERIAL" ] || [ "$NVME_SERIAL" = "---------------------" ]; then
-              NVME_SERIAL="no-nvme-detected"
-            fi
+            NVME_SERIAL=$(detect_nvme_serial)
           fi
           
           # Detect MAC address
           MAC_ADDRESS="${cfg.macAddress or ""}"
           if [ -z "$MAC_ADDRESS" ]; then
-            if command -v ip >/dev/null 2>&1; then
-              MAC_ADDRESS=$(ip link show | awk '/ether/ {print $2; exit}' || echo "")
-            fi
-            if [ -z "$MAC_ADDRESS" ]; then
-              MAC_ADDRESS="00:00:00:00:00:00"
-            fi
+            MAC_ADDRESS=$(detect_mac_address)
           fi
           
           echo "Detected hardware:"
@@ -133,36 +104,9 @@ in
           }
           EOF
           
-          # Generate ASL file
+          # Generate ASL file using shared template
           cat > "${cfg.dataDir}/hwinfo.asl" <<EOF
-          DefinitionBlock ("hwinfo.aml", "SSDT", 2, "HWINFO", "HWINFO", 0x00000001)
-          {
-              Scope (\_SB)
-              {
-                  Device (HWIN)
-                  {
-                      Name (_HID, "ACPI0001")
-                      Name (_UID, 0x00)
-                      Name (_STR, Unicode ("Hardware Info Device"))
-                      
-                      Method (GHWI, 0, NotSerialized)
-                      {
-                          Return (Package (0x04)
-                          {
-                              "NVME_SERIAL", 
-                              "$NVME_SERIAL", 
-                              "MAC_ADDRESS", 
-                              "$MAC_ADDRESS"
-                          })
-                      }
-                      
-                      Method (_STA, 0, NotSerialized)
-                      {
-                          Return (0x0F)
-                      }
-                  }
-              }
-          }
+${inputs.self.lib.generateAcpiTemplate { nvmeSerial = "$NVME_SERIAL"; macAddress = "$MAC_ADDRESS"; }}
           EOF
           
           # Compile ASL to AML
@@ -187,23 +131,23 @@ in
       };
     };
 
-    # Install required packages
+    # Install required packages and management commands
     environment.systemPackages = with pkgs; [
+      # Required tools for hardware detection and ACPI compilation
       acpica-tools
       nvme-cli
       util-linux
-    ];
+      jq
 
-    # Manual generation command
-    environment.systemPackages = [
-      (pkgs.writeShellScriptBin "acpi-hwinfo-generate" ''
+      # Management commands
+      (writeShellScriptBin "acpi-hwinfo-generate" ''
         sudo systemctl start acpi-hwinfo-generate.service
       '')
 
-      (pkgs.writeShellScriptBin "acpi-hwinfo-show" ''
+      (writeShellScriptBin "acpi-hwinfo-show" ''
         if [ -f "${cfg.dataDir}/hwinfo.json" ]; then
           echo "📊 Current hardware info:"
-          ${pkgs.jq}/bin/jq . "${cfg.dataDir}/hwinfo.json" 2>/dev/null || cat "${cfg.dataDir}/hwinfo.json"
+          ${jq}/bin/jq . "${cfg.dataDir}/hwinfo.json" 2>/dev/null || cat "${cfg.dataDir}/hwinfo.json"
           echo
           echo "📁 Available files:"
           ls -la "${cfg.dataDir}/"
