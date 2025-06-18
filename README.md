@@ -2,40 +2,12 @@
 
 A tool for embedding host hardware information into QEMU virtual machines via ACPI tables, allowing guests to access host hardware identifiers like NVMe serial numbers and MAC addresses.
 
-## Overview
-
-This project provides a way to pass hardware information from the host system to QEMU guests through ACPI SSDT tables. The hardware info becomes accessible within the guest OS through the ACPI interface.
-
-## Components
-
-- **qemu-acpi-hwinfo.sh** - Detects host hardware and generates ACPI SSDT table
-- **start-vm.sh** - Launches QEMU with the generated ACPI table
-- **guest-read-hwinfo.sh** - Reads hardware info from ACPI tables within the guest
-
-## Prerequisites
-
-- `iasl` (Intel ACPI Source Language Compiler)
-- `qemu-system-x86_64`
-- Root/sudo access for reading certain hardware information
-
-### Installing Prerequisites
-
-**Ubuntu/Debian:**
-```bash
-sudo apt install acpica-tools qemu-system-x86
-```
-
-**RHEL/Fedora:**
-```bash
-sudo dnf install acpica-tools qemu-system-x86
-```
-
 ## Quick Start with Nix (Recommended)
 
 If you have Nix with flakes enabled:
 
 ```bash
-# Enter development environment
+# Enter development environment with all dependencies
 nix develop
 
 # Read current machine hardware info
@@ -48,9 +20,42 @@ build-hwinfo
 ls -la ./result/
 ```
 
-The Nix-based workflow provides a complete development environment with all dependencies and convenience commands. See [`nix/README.md`](nix/README.md) for detailed information about the modular Nix structure.
+## Development Commands
 
-## Traditional Usage
+The Nix devshell provides these convenience commands:
+
+- **`acpi-hwinfo`** - Read hardware info from current machine
+- **`build-hwinfo`** - Build hwinfo package for current machine  
+- **`test-vm`** - Get guidance for testing in VMs
+- **`menu`** - Show available commands
+
+## Architecture
+
+The project uses a modular Nix structure with flake-parts:
+
+- **`nix/packages.nix`** - Package definitions for generating ACPI hardware info
+- **`nix/devshell.nix`** - Development shell with convenience commands
+- **`nix/formatter.nix`** - Code formatting configuration
+- **`nix/nixos-modules.nix`** - NixOS modules for host and guest systems
+- **`nix/lib.nix`** - Library functions for creating VMs
+
+## Traditional Usage (without Nix)
+
+### Prerequisites
+
+- `iasl` (Intel ACPI Source Language Compiler)
+- `qemu-system-x86_64`
+- Root/sudo access for reading hardware information
+
+**Ubuntu/Debian:**
+```bash
+sudo apt install acpica-tools qemu-system-x86
+```
+
+**RHEL/Fedora:**
+```bash
+sudo dnf install acpica-tools qemu-system-x86
+```
 
 ### 1. Generate ACPI Table
 
