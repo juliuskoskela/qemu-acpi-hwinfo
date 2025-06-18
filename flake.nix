@@ -290,6 +290,10 @@
             cp "$TEST_DIR/hwinfo.aml" ./test-hwinfo.aml 2>/dev/null || true
             [ -f ./test-hwinfo.aml ] && echo "• ACPI table copied to: ./test-hwinfo.aml"
             
+            # Also copy to /tmp for devshell access
+            cp "$TEST_DIR/hwinfo.aml" /tmp/qemu-acpi-hwinfo-test.aml 2>/dev/null || true
+            [ -f /tmp/qemu-acpi-hwinfo-test.aml ] && echo "• ACPI table also available at: /tmp/qemu-acpi-hwinfo-test.aml"
+            
             echo
             if [ "$VM_BUILD_SUCCESS" = "true" ]; then
               echo -e "''${GREEN}✅ MicroVM test completed successfully!''${NC}"

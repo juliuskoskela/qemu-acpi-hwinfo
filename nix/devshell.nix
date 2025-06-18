@@ -151,9 +151,23 @@
             
             # First run the microvm test to generate the ACPI table
             echo "📋 Step 1: Generating ACPI table..."
-            nix --extra-experimental-features "nix-command flakes" run .#test-microvm-with-hwinfo
+            if nix --extra-experimental-features "nix-command flakes" run .#test-microvm-with-hwinfo; then
+              echo "✅ ACPI table generation completed"
+            else
+              echo "❌ Failed to generate ACPI table"
+              exit 1
+            fi
             
+            # Check for ACPI table in multiple locations
+            ACPI_TABLE=""
             if [ -f ./test-hwinfo.aml ]; then
+              ACPI_TABLE="$(pwd)/test-hwinfo.aml"
+            elif [ -f /tmp/qemu-acpi-hwinfo-test.aml ]; then
+              cp /tmp/qemu-acpi-hwinfo-test.aml ./test-hwinfo.aml
+              ACPI_TABLE="$(pwd)/test-hwinfo.aml"
+            fi
+            
+            if [ -n "$ACPI_TABLE" ]; then
               echo
               echo "📦 Step 2: Building NixOS test VM..."
               if nix --extra-experimental-features "nix-command flakes" build .#nixosConfigurations.test-vm.config.system.build.vm; then
@@ -162,13 +176,13 @@
                 echo "VM will boot with injected hardware info ACPI table"
                 echo "Use 'read-hwinfo' command inside VM to test hardware detection"
                 echo
-                ./result/bin/run-*-vm -acpitable file=./test-hwinfo.aml
+                ./result/bin/run-*-vm -acpitable file="$ACPI_TABLE"
               else
                 echo "❌ Failed to build NixOS test VM"
                 exit 1
               fi
             else
-              echo "❌ Failed to generate ACPI table"
+              echo "❌ Failed to find generated ACPI table"
               exit 1
             fi
           '';
