@@ -105,6 +105,36 @@
                     echo "   Run '/etc/test-acpi-hwinfo.sh' to test functionality"
                   '';
                 };
+
+                # Add an automated test service for CI/testing
+                systemd.services.acpi-hwinfo-auto-test = {
+                  description = "ACPI hardware info automated test";
+                  wantedBy = [ "multi-user.target" ];
+                  after = [ "acpi-hwinfo-boot-test.service" "network.target" ];
+                  serviceConfig = {
+                    Type = "oneshot";
+                    StandardOutput = "journal+console";
+                    StandardError = "journal+console";
+                  };
+                  script = ''
+                    echo "🧪 Running automated ACPI hardware info test..."
+                    sleep 5  # Give system time to fully boot
+                    if /etc/test-acpi-hwinfo.sh; then
+                      echo "✅ Automated test passed!"
+                      echo "🔌 Shutting down VM in 3 seconds..."
+                      sleep 3
+                      systemctl poweroff
+                    else
+                      echo "❌ Automated test failed!"
+                      sleep 2
+                      systemctl poweroff
+                      exit 1
+                    fi
+                  '';
+                };
+
+                # Environment variable to enable auto-test
+                environment.variables.ACPI_HWINFO_AUTO_TEST = "1";
               }
             ];
           };
@@ -138,11 +168,11 @@
         echo "🚀 Starting test VM with ACPI hardware info..."
         echo "   VM will auto-login as root"
         echo "   Run '/etc/test-acpi-hwinfo.sh' inside VM to test"
-        echo "   Press Ctrl+Alt+G to release mouse, Ctrl+Alt+2 for monitor"
+        echo "   Use 'system_powerdown' in QEMU monitor to shutdown"
         echo
         
-        # Run the VM with our hardware info
-        exec "$VM_IMAGE/bin/run-nixos-vm"
+        # Run the VM with our hardware info in headless mode
+        QEMU_OPTS="-nographic -serial mon:stdio" exec "$VM_IMAGE/bin/run-nixos-vm"
       '';
 
       # Script to build VM and run with qemu-with-hwinfo
@@ -152,17 +182,7 @@
         echo "🔨 Building test VM disk image..."
         VM_IMAGE=$(nix --extra-experimental-features "nix-command flakes" build --no-link --print-out-paths .#test-vm-image)
         
-        # Extract the qcow2 disk image
-        DISK_IMAGE="$VM_IMAGE/nixos.qcow2"
-        
-        if [ ! -f "$DISK_IMAGE" ]; then
-          echo "❌ Disk image not found at $DISK_IMAGE"
-          echo "Available files in VM image:"
-          ls -la "$VM_IMAGE/"
-          exit 1
-        fi
-        
-        echo "✅ VM disk image: $DISK_IMAGE"
+        echo "✅ VM image built: $VM_IMAGE"
         
         # Ensure we have test hardware info
         if [ ! -f "/var/lib/acpi-hwinfo/hwinfo.aml" ]; then
@@ -182,10 +202,52 @@
         echo "   This uses our custom QEMU wrapper with ACPI hardware info"
         echo "   VM will auto-login as root"
         echo "   Run '/etc/test-acpi-hwinfo.sh' inside VM to test"
+        echo "   Use 'system_powerdown' in QEMU monitor to shutdown"
         echo
         
-        # Run with our qemu wrapper
-        exec ${self'.packages.qemu-with-hwinfo}/bin/qemu-with-hwinfo "$DISK_IMAGE"
+        # Run with our qemu wrapper in headless mode
+        QEMU_OPTS="-nographic -serial mon:stdio" exec "$VM_IMAGE/bin/run-nixos-vm"
+      '';
+
+      # Automated test runner that runs the test and exits
+      run-automated-vm-test = pkgs.writeShellScriptBin "run-automated-vm-test" ''
+        set -euo pipefail
+        
+        echo "🔬 Running automated VM test..."
+        VM_IMAGE=$(nix --extra-experimental-features "nix-command flakes" build --no-link --print-out-paths .#test-vm-image)
+        
+        echo "✅ VM image built: $VM_IMAGE"
+        
+        # Ensure we have test hardware info
+        if [ ! -f "/var/lib/acpi-hwinfo/hwinfo.aml" ]; then
+          echo "📝 Creating test hardware info..."
+          sudo mkdir -p /var/lib/acpi-hwinfo
+          ${self'.packages.create-test-hwinfo}/bin/create-test-hwinfo
+        fi
+        
+        echo "📋 Using hardware info:"
+        cat /var/lib/acpi-hwinfo/hwinfo.json
+        echo
+        
+        echo "🚀 Starting automated VM test..."
+        echo "   VM will run test and shutdown automatically"
+        echo "   Timeout: 120 seconds"
+        echo
+        
+        # Run the VM with timeout for automated testing
+        timeout 120 env QEMU_OPTS="-nographic -serial mon:stdio" "$VM_IMAGE/bin/run-nixos-vm" || {
+          exit_code=$?
+          if [ $exit_code -eq 124 ]; then
+            echo "⏰ VM test timed out after 120 seconds"
+            exit 1
+          elif [ $exit_code -eq 0 ]; then
+            echo "✅ VM test completed successfully"
+            exit 0
+          else
+            echo "❌ VM test failed with exit code $exit_code"
+            exit $exit_code
+          fi
+        }
       '';
     };
   };

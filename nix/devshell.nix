@@ -97,6 +97,7 @@
             echo "   integration-test      - Run integration tests"
             echo "   run-test-vm           - Build and run test VM"
             echo "   run-test-vm-with-hwinfo - Run test VM with hardware info"
+            echo "   run-automated-vm-test - Run automated VM test (auto-exit)"
             echo
             echo "💡 For NixOS systems, enable the acpi-hwinfo module:"
             echo "   services.acpi-hwinfo.enable = true;"
@@ -140,6 +141,14 @@
           command = ''
             echo "🚀 Running test VM with hardware info..."
             nix --extra-experimental-features "nix-command flakes" run .#run-test-vm-with-hwinfo
+          '';
+        }
+        {
+          name = "run-automated-vm-test";
+          help = "Run automated VM test (runs test and exits)";
+          command = ''
+            echo "🔬 Running automated VM test..."
+            nix --extra-experimental-features "nix-command flakes" run .#run-automated-vm-test
           '';
         }
       ];
