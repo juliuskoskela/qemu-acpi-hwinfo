@@ -17,10 +17,8 @@
       perSystem = { pkgs, system, ... }: {
         packages = {
           # Generate hardware info and create ACPI table
-          generate-hwinfo = pkgs.writeShellApplication {
-            name = "generate-hwinfo";
-            runtimeInputs = with pkgs; [ nvme-cli iproute2 acpica-tools coreutils ];
-            text = ''
+          generate-hwinfo = pkgs.writeShellScriptBin "generate-hwinfo" ''
+            export PATH="${pkgs.lib.makeBinPath (with pkgs; [ nvme-cli iproute2 acpica-tools coreutils ])}:$PATH"
             set -euo pipefail
             
             HWINFO_DIR="''${1:-/var/lib/acpi-hwinfo}"
@@ -67,14 +65,11 @@
             # Compile to AML
             cd "$HWINFO_DIR" && iasl hwinfo.asl >/dev/null 2>&1
             echo "Generated ACPI hardware info in $HWINFO_DIR"
-            '';
-          };
+          '';
 
           # Read hardware info from ACPI in guest
-          read-hwinfo = pkgs.writeShellApplication {
-            name = "read-hwinfo";
-            runtimeInputs = with pkgs; [ binutils coreutils ];
-            text = ''
+          read-hwinfo = pkgs.writeShellScriptBin "read-hwinfo" ''
+            export PATH="${pkgs.lib.makeBinPath (with pkgs; [ binutils coreutils ])}:$PATH"
             set -euo pipefail
             
             ACPI_DEVICE="/sys/bus/acpi/devices/ACPI0001:00"
@@ -87,8 +82,7 @@
                 break
               fi
             done
-            '';
-          };
+          '';
 
           # Comprehensive test with microvm
           test-microvm-with-hwinfo = pkgs.writeShellScriptBin "test-microvm-with-hwinfo" ''
