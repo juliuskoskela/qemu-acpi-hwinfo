@@ -25,8 +25,8 @@
         iproute2
         util-linux
 
-        # QEMU and virtualization
-        qemu
+        # Virtualization tools
+        # (MicroVM dependencies handled by flake inputs)
 
         # Development tools
         jq
