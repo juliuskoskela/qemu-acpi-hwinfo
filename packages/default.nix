@@ -223,21 +223,28 @@
         fi
         
         # Test MicroVM functionality
-        echo "💡 To run a full MicroVM test:"
-        echo "   run-test-microvm"
-        echo ""
-        echo "💡 MicroVM example configuration available at:"
-        echo "   ./examples/microvm.nix"
+        echo "🚀 Building MicroVM with ACPI hardware info..."
         
-        echo "✅ VM test with hardware info completed successfully"
-        echo ""
-        echo "🎉 All tests passed! Your ACPI hardware info module is working correctly."
-        echo ""
-        echo "📋 Available commands:"
-        echo "   acpi-hwinfo-generate  - Generate hardware info"
-        echo "   acpi-hwinfo-show      - Show current hardware info"
-        echo "   run-test-microvm      - Run MicroVM with hardware info"
-        echo ""
+        # Build the MicroVM using our library function
+        nix build --impure --expr "
+          let
+            flake = builtins.getFlake (toString ./.);
+            system = \"x86_64-linux\";
+          in
+          flake.lib.mkMicroVMWithHwInfo {
+            inherit system;
+            config = import ./examples/microvm-with-hwinfo.nix;
+          }
+        " -o microvm-result
+        
+        echo "🚀 Starting MicroVM..."
+        echo "   To run the test script: /etc/test-acpi-hwinfo.sh"
+        echo "   To test guest tools: read-hwinfo, show-acpi-hwinfo, extract-hwinfo-json"
+        echo "   To exit: Press Ctrl+C"
+        echo
+        
+        # Run the MicroVM
+        exec ./microvm-result/bin/microvm-run
       '';
 
 
