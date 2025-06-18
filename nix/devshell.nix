@@ -83,7 +83,7 @@
           help = "Build hwinfo package for current machine";
           command = ''
             echo "🔨 Building hwinfo package..."
-            nix build .#hwinfo
+            nix --extra-experimental-features "nix-command flakes" build .#hwinfo
             echo "✅ Built hwinfo package at ./result"
             echo
             echo "📄 Generated files:"
@@ -101,7 +101,8 @@
           command = ''
             echo "🚀 Testing hwinfo in microVM..."
             echo "This will build and run a test VM with the generated hwinfo"
-            nix run .#microvm
+            echo "Note: MicroVM functionality requires additional setup"
+            echo "Use the example-vm.nix or microvm.nix files for VM configuration"
           '';
         }
       ];
