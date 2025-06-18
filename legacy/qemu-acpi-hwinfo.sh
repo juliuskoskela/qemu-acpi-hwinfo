@@ -6,17 +6,17 @@ set -e
 
 # Get hardware info
 get_nvme_serial() {
-    if command -v nvme >/dev/null 2>&1; then
-        nvme id-ctrl /dev/nvme0n1 2>/dev/null | grep '^sn' | awk '{print $3}' || echo "UNKNOWN"
-    elif [ -f "/sys/class/nvme/nvme0/serial" ]; then
-        cat /sys/class/nvme/nvme0/serial 2>/dev/null || echo "UNKNOWN"
-    else
-        echo "UNKNOWN"
-    fi
+  if command -v nvme >/dev/null 2>&1; then
+    nvme id-ctrl /dev/nvme0n1 2>/dev/null | grep '^sn' | awk '{print $3}' || echo "UNKNOWN"
+  elif [ -f "/sys/class/nvme/nvme0/serial" ]; then
+    cat /sys/class/nvme/nvme0/serial 2>/dev/null || echo "UNKNOWN"
+  else
+    echo "UNKNOWN"
+  fi
 }
 
 get_mac_address() {
-    ip link show | grep -E "link/ether" | head -1 | awk '{print $2}' 2>/dev/null || echo "00:00:00:00:00:00"
+  ip link show | grep -E "link/ether" | head -1 | awk '{print $2}' 2>/dev/null || echo "00:00:00:00:00:00"
 }
 
 # Allow overrides from environment or command line
@@ -28,7 +28,7 @@ echo "  NVMe Serial: $NVME_SERIAL"
 echo "  MAC Address: $MAC_ADDRESS"
 
 # Create ACPI SSDT table
-cat > hwinfo.asl << EOF
+cat >hwinfo.asl <<EOF
 /*
  * Hardware Info ACPI Table
  * Generated: $(date)
@@ -64,22 +64,21 @@ EOF
 
 # Compile ACPI table
 if command -v iasl >/dev/null 2>&1; then
-    echo "Compiling ACPI table..."
-    iasl hwinfo.asl
-    
-    if [ -f hwinfo.aml ]; then
-        echo "ACPI table compiled successfully: hwinfo.aml"
-        echo ""
-        echo "Usage:"
-        echo "  qemu-system-x86_64 -acpitable file=hwinfo.aml [other options]"
-        echo ""
-        
-    else
-        echo "Error: Failed to compile ACPI table"
-        exit 1
-    fi
-else
-    echo "Error: iasl (ACPI compiler) not found"
-    exit 1
-fi
+  echo "Compiling ACPI table..."
+  iasl hwinfo.asl
 
+  if [ -f hwinfo.aml ]; then
+    echo "ACPI table compiled successfully: hwinfo.aml"
+    echo ""
+    echo "Usage:"
+    echo "  qemu-system-x86_64 -acpitable file=hwinfo.aml [other options]"
+    echo ""
+
+  else
+    echo "Error: Failed to compile ACPI table"
+    exit 1
+  fi
+else
+  echo "Error: iasl (ACPI compiler) not found"
+  exit 1
+fi

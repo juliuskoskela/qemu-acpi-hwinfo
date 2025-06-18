@@ -15,7 +15,8 @@
           hwinfo = inputs.self.lib.generateHwInfo {
             inherit system nvmeSerial macAddress;
           };
-        in {
+        in
+        {
           imports = [
             inputs.microvm.nixosModules.microvm
             inputs.self.nixosModules.guest

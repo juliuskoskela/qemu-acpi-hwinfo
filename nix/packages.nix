@@ -1,8 +1,8 @@
 { inputs, ... }:
 {
-  perSystem = { config, self', inputs', pkgs, system, ... }: 
-  let
-    generateHwInfo = { nvmeSerial ? null, macAddress ? null }:
+  perSystem = { config, self', inputs', pkgs, system, ... }:
+    let
+      generateHwInfo = { nvmeSerial ? null, macAddress ? null }:
         pkgs.stdenv.mkDerivation rec {
           pname = "qemu-acpi-hwinfo";
           version = "1.0.0";
@@ -10,9 +10,9 @@
           src = ../.;
 
           nativeBuildInputs = with pkgs; [
-            acpica-tools  # provides iasl
-            iproute2      # for ip command
-            nvme-cli      # for nvme command
+            acpica-tools # provides iasl
+            iproute2 # for ip command
+            nvme-cli # for nvme command
             bash
           ];
 
@@ -115,11 +115,12 @@
             platforms = platforms.linux;
           };
         };
-  in {
-    packages = {
-      default = generateHwInfo { };
-      hwinfo = generateHwInfo { };
-      inherit generateHwInfo;
+    in
+    {
+      packages = {
+        default = generateHwInfo { };
+        hwinfo = generateHwInfo { };
+        inherit generateHwInfo;
+      };
     };
-  };
 }

@@ -7,7 +7,8 @@
         with lib;
         let
           cfg = config.services.acpi-hwinfo;
-        in {
+        in
+        {
           options.services.acpi-hwinfo = {
             enable = mkEnableOption "ACPI hardware info for VMs";
 
@@ -37,7 +38,8 @@
                   nvmeSerial = cfg.nvmeSerial;
                   macAddress = cfg.macAddress;
                 };
-              in "${hwinfo}/hwinfo.aml";
+              in
+              "${hwinfo}/hwinfo.aml";
           };
         };
 
@@ -85,7 +87,8 @@
             echo "💡 The info should match the host machine that generated the hwinfo"
           '';
 
-        in {
+        in
+        {
           options.services.acpi-hwinfo-guest = {
             enable = mkEnableOption "ACPI hardware info reader for guest VMs";
           };

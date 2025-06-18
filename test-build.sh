@@ -20,7 +20,7 @@ echo
 
 echo "2. Checking ACPI table was compiled..."
 ls -la result/hwinfo.aml
-echo "✓ ACPI table exists: $(wc -c < result/hwinfo.aml) bytes"
+echo "✓ ACPI table exists: $(wc -c <result/hwinfo.aml) bytes"
 
 echo
 echo "3. Viewing ACPI source code..."

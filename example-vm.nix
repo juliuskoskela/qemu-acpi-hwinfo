@@ -12,7 +12,8 @@ let
     macAddress = "00:11:22:33:44:55";
   };
 
-in {
+in
+{
   imports = [
     microvm.nixosModules.microvm
     self.nixosModules.guest

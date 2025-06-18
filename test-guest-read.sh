@@ -25,7 +25,7 @@ strings "$HWINFO_PATH" | grep -E "(NVME_SERIAL|MAC_ADDRESS|nvme_card|f6:bf)" || 
 
 echo
 echo "4. Creating a simple test script for guest..."
-cat > /tmp/test-guest-hwinfo.sh << 'EOF'
+cat >/tmp/test-guest-hwinfo.sh <<'EOF'
 #!/bin/bash
 echo "=== Guest Hardware Info Test ==="
 echo "Looking for ACPI SSDT tables..."
@@ -61,12 +61,12 @@ echo "✓ ACPI table is generated and contains expected data"
 echo "✓ Guest test script is ready"
 echo
 echo "To test in a real VM, you would run:"
-echo "  qemu-system-x86_64 \\"
+echo '  qemu-system-x86_64 \'
 echo "    -acpitable file=$HWINFO_PATH \\"
-echo "    -kernel /path/to/kernel \\"
-echo "    -initrd /path/to/initrd \\"
+echo '    -kernel /path/to/kernel \'
+echo '    -initrd /path/to/initrd \'
 echo "    -append 'console=ttyS0' \\"
-echo "    -nographic \\"
+echo '    -nographic \'
 echo "    [other options]"
 echo
 echo "Then inside the guest, run the test script to verify hardware info is accessible."

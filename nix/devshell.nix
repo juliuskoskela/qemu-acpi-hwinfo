@@ -24,14 +24,14 @@
         nvme-cli
         iproute2
         util-linux
-        
+
         # QEMU and virtualization
         qemu
-        
+
         # Development tools
         jq
         curl
-        
+
         # Nix tools
         nixpkgs-fmt
         nil
