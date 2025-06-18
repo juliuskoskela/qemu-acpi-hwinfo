@@ -281,12 +281,26 @@ EOF
           }).config.system.build.vm
         " -o test-vm-result
         
-        echo "🚀 Starting NixOS VM..."
+        # Find the hardware info AML file
+        HWINFO_AML=""
+        if [ -f "/var/lib/acpi-hwinfo/hwinfo.aml" ]; then
+          HWINFO_AML="/var/lib/acpi-hwinfo/hwinfo.aml"
+        elif [ -f "./acpi-hwinfo/hwinfo.aml" ]; then
+          HWINFO_AML="./acpi-hwinfo/hwinfo.aml"
+        else
+          echo "❌ Hardware info AML file not found!"
+          exit 1
+        fi
+        
+        echo "🚀 Starting NixOS VM with hardware info ACPI table..."
+        echo "   Hardware info AML: $HWINFO_AML"
         echo "   To run the test: /etc/test-acpi-hwinfo.sh"
+        echo "   To test hardware info: read-hwinfo"
         echo "   To exit: Press Ctrl+C"
         echo
         
-        exec ./test-vm-result/bin/run-nixos-vm
+        # Start VM with custom ACPI table
+        exec ./test-vm-result/bin/run-nixos-vm -acpitable file="$HWINFO_AML"
       '';
 
       # End-to-end test with MicroVM and our module
