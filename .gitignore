@@ -19,6 +19,11 @@ test-hwinfo.*
 test-*
 *-test.*
 test-nixos-vm.nix
+*-test-*
+test*.nix
+test*.qcow2
+fresh-*.qcow2
+hwinfo-*.qcow2
 
 # Temporary files
 *.tmp
