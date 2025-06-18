@@ -137,7 +137,7 @@ EOF
                 HWINFO_DIR="/var/lib/acpi-hwinfo"
                 if [ -f "$HWINFO_DIR/hwinfo.json" ]; then
                   echo "Current hardware info:"
-                  ${jq}/bin/jq . "$HWINFO_DIR/hwinfo.json"
+                  ${pkgs.jq}/bin/jq . "$HWINFO_DIR/hwinfo.json"
                   echo
                   echo "Files available:"
                   ls -la "$HWINFO_DIR/"
