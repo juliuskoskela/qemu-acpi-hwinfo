@@ -1,6 +1,11 @@
 {
   description = "QEMU ACPI Hardware Info - Simple MicroVM Setup";
 
+  nixConfig = {
+    extra-substituters = [ "https://microvm.cachix.org" ];
+    extra-trusted-public-keys = [ "microvm.cachix.org-1:oXnBc6hRE3eX5rSYdRyMYXnfzcCxC7yKPTbZXALsqys=" ];
+  };
+
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     microvm = {
@@ -15,6 +20,11 @@
       pkgs = import nixpkgs {
         inherit system;
         overlays = [ microvm.overlay ];
+      };
+      
+      # Fix for hostPackages missing error
+      pkgsWithHostPackages = pkgs // {
+        hostPackages = pkgs;
       };
       
       # Generate ACPI table with hardware info
@@ -76,13 +86,10 @@
       # NixOS configuration for MicroVM with hardware info
       nixosConfigurations.microvm-hwinfo = nixpkgs.lib.nixosSystem {
         inherit system;
-        inherit pkgs;
+        pkgs = pkgsWithHostPackages;
         modules = [
           microvm.nixosModules.microvm
           {
-            # Fix for hostPackages missing error
-            nixpkgs.hostPlatform = system;
-            nixpkgs.buildPlatform = system;
             # Basic system configuration
             networking.hostName = "microvm-hwinfo";
             users.users.root.password = "";
@@ -100,6 +107,14 @@
                 type = "user";
                 id = "vm-net";
                 mac = "02:00:00:00:00:01";
+              }];
+
+              # Share the Nix store using 9p (more reliable than virtiofs)
+              shares = [{
+                proto = "9p";
+                tag = "ro-store";
+                source = "/nix/store";
+                mountPoint = "/nix/.ro-store";
               }];
 
               # Inject ACPI hardware info
@@ -282,6 +297,64 @@
           fi
         '';
 
+        # Simple QEMU runner with ACPI injection (alternative to microvm.nix)
+        qemu-with-hwinfo = pkgs.writeShellScriptBin "qemu-with-hwinfo" ''
+          set -euo pipefail
+          
+          echo "🚀 Starting QEMU with ACPI hardware info injection..."
+          echo "📄 ACPI table: ${hwinfo-aml}"
+          echo ""
+          
+          # Create a minimal initrd for testing
+          INITRD=$(mktemp -d)
+          mkdir -p $INITRD/{bin,sbin,etc,proc,sys,dev}
+          
+          # Copy busybox for basic shell
+          cp ${pkgs.busybox}/bin/busybox $INITRD/bin/
+          ln -s busybox $INITRD/bin/sh
+          ln -s busybox $INITRD/bin/ls
+          ln -s busybox $INITRD/bin/cat
+          ln -s busybox $INITRD/bin/mount
+          
+          # Create init script
+          cat > $INITRD/init << 'EOF'
+          #!/bin/sh
+          echo "🎉 QEMU VM with ACPI hardware info started!"
+          echo "📋 Available ACPI tables:"
+          mount -t proc proc /proc
+          mount -t sysfs sysfs /sys
+          if [ -d /sys/firmware/acpi/tables ]; then
+            ls -la /sys/firmware/acpi/tables/
+            echo ""
+            echo "🔍 Looking for our custom HWINFO table..."
+            if [ -f /sys/firmware/acpi/tables/SSDT* ]; then
+              echo "✅ Found SSDT tables (our HWINFO table should be among them)"
+            fi
+          fi
+          echo ""
+          echo "💡 This VM was started with: -acpitable file=${hwinfo-aml}"
+          echo "🛑 Press Ctrl+A then X to exit QEMU"
+          /bin/sh
+          EOF
+          chmod +x $INITRD/init
+          
+          # Create initrd
+          INITRD_FILE=$(mktemp)
+          (cd $INITRD && find . | cpio -o -H newc | gzip > $INITRD_FILE)
+          
+          # Run QEMU with our ACPI table
+          exec ${pkgs.qemu}/bin/qemu-system-x86_64 \
+            -acpitable file=${hwinfo-aml} \
+            -kernel ${pkgs.linux}/bzImage \
+            -initrd $INITRD_FILE \
+            -append "console=ttyS0 init=/init" \
+            -m 1024 \
+            -nographic \
+            -enable-kvm \
+            -netdev user,id=net0 \
+            -device virtio-net-pci,netdev=net0
+        '';
+
         # Test runner
         run-test-vm-with-hwinfo = pkgs.writeShellScriptBin "run-test-vm-with-hwinfo" ''
           set -euo pipefail
@@ -298,10 +371,17 @@
           file ${hwinfo-aml}
           
           echo ""
-          echo "🚀 To run the MicroVM:"
-          echo "   nix run .#microvm-run"
+          echo "🚀 QEMU command with ACPI injection:"
+          echo "   ${pkgs.qemu}/bin/qemu-system-x86_64 \\"
+          echo "     -acpitable file=${hwinfo-aml} \\"
+          echo "     -m 1024 \\"
+          echo "     -nographic \\"
+          echo "     -enable-kvm \\"
+          echo "     -netdev user,id=net0 \\"
+          echo "     -device virtio-net-pci,netdev=net0"
           echo ""
           echo "✅ End-to-end test completed successfully!"
+          echo "   The ACPI table is ready for injection into any QEMU VM."
         '';
       };
 
@@ -317,7 +397,8 @@
           echo "🔧 MicroVM Hardware Info Development Environment"
           echo ""
           echo "Available commands:"
-          echo "  nix run .#microvm-run             - Run MicroVM directly"
+          echo "  nix run .#qemu-with-hwinfo        - Run QEMU with ACPI injection"
+          echo "  nix run .#microvm-run             - Run MicroVM directly (may have issues)"
           echo "  nix run .#acpi-hwinfo-generate    - Generate hardware info"
           echo "  nix run .#run-test-vm-with-hwinfo - Run end-to-end test"
           echo ""
