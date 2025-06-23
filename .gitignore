@@ -1,0 +1,16 @@
+# Nix build results
+result
+result-*
+
+# Generated ACPI files
+*.aml
+hwinfo.asl
+hwinfo.json
+
+# VM disk images
+*.qcow2
+*.img
+
+# Temporary files
+*.tmp
+*.log
